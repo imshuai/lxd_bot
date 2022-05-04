@@ -5,10 +5,14 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
-	tgapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"golang.org/x/net/proxy"
+	tele "gopkg.in/telebot.v3"
 )
 
 func main() {
@@ -30,32 +34,26 @@ func main() {
 		}
 		proxyClient = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyUrl)}}
 	}
-	bot, err := tgapi.NewBotAPIWithClient(cfg.Token, tgapi.APIEndpoint, proxyClient)
+	botAPI, err := tele.NewBot(tele.Settings{
+		Token:   cfg.Token,
+		Poller:  &tele.LongPoller{Timeout: time.Second * 60},
+		Client:  proxyClient,
+		Verbose: isDebug,
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
-	bot.Debug = true
 
-	log.Printf("Authorized on account %s\n", bot.Self.UserName)
+	log.Printf("Authorized on account %s\n", botAPI.Me.Username)
 
 	err = openDB(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("cannot open database with error: %s\n", err.Error())
 	}
+	go handleMessage(botAPI)
 
-	u := tgapi.NewUpdate(getUpdateID())
-	u.Timeout = 60
-
-	updates := bot.GetUpdatesChan(u)
-
-	for update := range updates {
-		if update.Message != nil {
-
-			if update.Message.IsCommand() {
-				go handleCommandMessage(bot, &update)
-				continue
-			}
-			go handleNormalMessage(bot, &update)
-		}
-	}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM)
+	<-c
+	bot.Quit()
 }

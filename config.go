@@ -8,9 +8,11 @@ import (
 )
 
 type config struct {
-	Token  string `json:"bot_token"`
-	Proxy  string `json:"proxy"`
-	DBPath string `json:"db_path"`
+	Token     string `json:"bot_token"`
+	Proxy     string `json:"proxy"`
+	DBPath    string `json:"db_path"`
+	ChannelID string `json:"channel_id"`
+	GroupID   string `json:"group_id"`
 }
 
 func readConfig(cfgPath string) *config {
