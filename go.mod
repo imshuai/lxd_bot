@@ -4,10 +4,10 @@ go 1.18
 
 require (
 	github.com/boltdb/bolt v1.3.1
-	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/lxc/lxd v0.0.0-20220502114057-286284604290
 	github.com/pborman/uuid v1.2.1
 	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
+	gopkg.in/telebot.v3 v3.0.0
 )
 
 require (
@@ -32,5 +32,4 @@ require (
 	gopkg.in/httprequest.v1 v1.2.1 // indirect
 	gopkg.in/macaroon-bakery.v2 v2.3.0 // indirect
 	gopkg.in/macaroon.v2 v2.1.0 // indirect
-	gopkg.in/telebot.v3 v3.0.0 // indirect
 )

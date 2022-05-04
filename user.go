@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -29,6 +28,8 @@ type tUser struct {
 	SSHPort     int      `json:"ssh_port"`
 	UseableNum  int      `json:"useable_num"`
 	Instaces    []string `json:"instances"`
+	Profie      string   `json:"profie"`
+	NodeName    string   `json:"node_name"`
 	locker      *sync.RWMutex
 }
 
@@ -92,7 +93,7 @@ func (u *tUser) Key() []byte {
 }
 
 func (u *tUser) Get() error {
-	err := bot.View(func(tx *bolt.Tx) error {
+	err := bot.db.View(func(tx *bolt.Tx) error {
 		bck := tx.Bucket([]byte(USERS))
 		if bck == nil {
 			return ErrorKeyNotFound
@@ -105,7 +106,7 @@ func (u *tUser) Get() error {
 		if err != nil {
 			return err
 		}
-		u = uu
+		*u = *uu
 		return nil
 	})
 	if err != nil {
@@ -117,7 +118,7 @@ func (u *tUser) Get() error {
 func (u *tUser) Save() error {
 	u.locker.Lock()
 	defer u.locker.Unlock()
-	return bot.Update(func(tx *bolt.Tx) error {
+	return bot.db.Update(func(tx *bolt.Tx) error {
 		bck, err := tx.CreateBucketIfNotExists([]byte(USERS))
 		if err != nil {
 			return err
@@ -126,11 +127,11 @@ func (u *tUser) Save() error {
 	})
 }
 
-func (u *tUser) CreateInstance() (*tInstance, error) {
+func (u *tUser) CreateInstance() error {
 	if u.UseableNum >= 1 {
 		//TODO: 允许用户创建实例
 	}
-	return nil, ErrorOverQuota
+	return ErrorOverQuota
 }
 
 func (u *tUser) Checkin() error {
@@ -138,7 +139,7 @@ func (u *tUser) Checkin() error {
 	defer u.locker.Unlock()
 	u.LastCheckin = tNow()
 	u.Expiration = tExpiration(u.LastCheckin)
-	err := bot.Update(func(tx *bolt.Tx) error {
+	err := bot.db.Update(func(tx *bolt.Tx) error {
 		bck, err := tx.CreateBucketIfNotExists([]byte(USERS))
 		if err != nil {
 			return err
@@ -147,19 +148,6 @@ func (u *tUser) Checkin() error {
 	})
 	if err != nil {
 		return ErrorCheckinFailed
-	}
-	for _, instanceName := range u.Instaces {
-		i := &tInstance{UUID: instanceName}
-		err := i.Get()
-		if err != nil {
-			log.Printf("[%12s][Checkin][%7s] %s", u.Name, "ERROR", err.Error())
-			continue
-		}
-		i.Expiration = u.Expiration
-		err = i.Save()
-		if err != nil {
-			log.Printf("[%12s][Checkin][%7s] %s", u.Name, "ERROR", err.Error())
-		}
 	}
 	return nil
 }

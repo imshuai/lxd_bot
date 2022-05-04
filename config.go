@@ -13,6 +13,9 @@ type config struct {
 	DBPath    string `json:"db_path"`
 	ChannelID string `json:"channel_id"`
 	GroupID   string `json:"group_id"`
+	CertFile  string `json:"cert_file"`
+	KeyFile   string `json:"key_file"`
+	ServerURL string `json:"server_url"`
 }
 
 func readConfig(cfgPath string) *config {
