@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/boltdb/bolt"
 	"gopkg.in/telebot.v3"
@@ -57,7 +58,7 @@ func handleCheckin(c telebot.Context) error {
 	if err == ErrorKeyNotFound {
 		msg = "你现在还无法签到, 请先给机器人发送一条消息建立用户信息"
 	} else {
-		if len(u.Instaces) <= 0 {
+		if len(u.Instances) <= 0 {
 			msg = "你现在还没有可以续期的实例，无需签到"
 		} else {
 			err = u.Checkin()
@@ -77,31 +78,59 @@ func handlePing(c telebot.Context) error {
 
 func handleInstanceControl(c telebot.Context) error {
 	// TODO instance control
-	uuid := c.Args()[0]
+	if !c.Chat().Private {
+		return c.Bot().Delete(c.Message())
+	}
+	u := &tUser{UID: c.Sender().ID}
+	err := u.Get()
+	if err != nil {
+		return err
+	}
+	uuid := strings.Split(c.Args()[0], "@")[0]
+	if !u.HasInstance(uuid) {
+		return c.Send("该实例不属于你或实例UUID错误")
+	}
+	state, err := GetInstanceState(uuid)
+	if err != nil {
+		return c.Send("获取实例状态失败，稍后再试")
+	}
+	profile, err := GetInstanceProfile(uuid)
+	if err != nil {
+		return c.Send("获取实例配置文件失败，稍后再试")
+	}
+	msg := fmt.Sprintf("CPU: \n内存: %-5s/%5s\n磁盘: %-5s/%5s\n网络: 下行%-7s\t上行%-7s",
+		formatSize(state.Memory.Usage), profile.Config["limits.memory"],
+		formatSize(state.Disk["root"].Usage), profile.Devices["root"]["size"],
+		formatSize(state.Network["eth0"].Counters.BytesReceived),
+		formatSize(state.Network["eth0"].Counters.BytesSent))
 	markup := bot.NewMarkup()
 	markup.Inline([]telebot.Row{
 		{
 			telebot.Btn{
-				Text: "开机",
-				Data: "data 1",
+				Unique: uuid,
+				Text:   "开机",
+				Data:   "start",
 			},
 			telebot.Btn{
-				Text: "关机",
-				Data: "data 2",
+				Unique: uuid,
+				Text:   "关机",
+				Data:   "stop",
 			},
 		},
 		{
 			telebot.Btn{
-				Text: "重启",
-				Data: "data 3",
+				Unique: uuid,
+				Text:   "重启",
+				Data:   "restart",
 			},
 			telebot.Btn{
-				Text: "删机",
-				Data: "data 4",
+				Unique: uuid,
+				Text:   "删机",
+				Data:   "delete",
 			},
 		},
 	}...)
-	return c.Send(uuid, markup)
+	return c.Send(msg, markup)
 
 }
 

@@ -38,3 +38,20 @@ func deleteInstance(name string) error {
 	}
 	return op.Wait()
 }
+
+func GetInstanceState(name string) (*api.InstanceState, error) {
+	state, _, err := instance.GetInstanceState(name)
+	return state, err
+}
+
+func GetInstanceProfile(name string) (*api.Profile, error) {
+	i, _, err := instance.GetInstance(name)
+	if err != nil {
+		return nil, err
+	}
+	profile, _, err := instance.GetProfile(i.Profiles[0])
+	if err != nil {
+		return nil, err
+	}
+	return profile, nil
+}

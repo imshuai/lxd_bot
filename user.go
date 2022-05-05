@@ -18,18 +18,18 @@ const (
 var ExpirationTime = time.Hour * 24 * 7
 
 type tUser struct {
-	Name        string   `json:"name"`
-	UID         int64    `json:"uid"`
-	UUID        string   `json:"uuid"`
-	ChatID      int64    `json:"chat_id"`
-	Created     tTime    `json:"created"`
-	LastCheckin tTime    `json:"last_checkin"`
-	Expiration  tTime    `json:"expiration"`
-	SSHPort     int      `json:"ssh_port"`
-	UseableNum  int      `json:"useable_num"`
-	Instaces    []string `json:"instances"`
-	Profie      string   `json:"profie"`
-	NodeName    string   `json:"node_name"`
+	Name        string              `json:"name"`
+	UID         int64               `json:"uid"`
+	UUID        string              `json:"uuid"`
+	ChatID      int64               `json:"chat_id"`
+	Created     tTime               `json:"created"`
+	LastCheckin tTime               `json:"last_checkin"`
+	Expiration  tTime               `json:"expiration"`
+	SSHPort     int                 `json:"ssh_port"`
+	UseableNum  int                 `json:"useable_num"`
+	Instances   map[string]struct{} `json:"instances"`
+	Profie      string              `json:"profie"`
+	NodeName    string              `json:"node_name"`
 	locker      *sync.RWMutex
 }
 
@@ -76,7 +76,9 @@ func NewUser(name string, uid int64, chatID int64) (*tUser, error) {
 		Expiration:  tExpiration(t),
 		SSHPort:     0,
 		UseableNum:  1,
-		Instaces:    []string{},
+		Instances:   make(map[string]struct{}),
+		Profie:      "",
+		NodeName:    name,
 		locker:      &sync.RWMutex{},
 	}
 
@@ -150,4 +152,9 @@ func (u *tUser) Checkin() error {
 		return ErrorCheckinFailed
 	}
 	return nil
+}
+
+func (u *tUser) HasInstance(name string) bool {
+	_, ok := u.Instances[name]
+	return ok
 }
