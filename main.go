@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
+	lxd "github.com/lxc/lxd/client"
 	"golang.org/x/net/proxy"
 	"gopkg.in/telebot.v3"
 )
@@ -56,28 +58,30 @@ func main() {
 	}
 	defer bot.db.Close()
 
-	// instance, err = lxd.ConnectLXD(cfg.ServerURL, &lxd.ConnectionArgs{
-	// 	TLSClientCert: func() string {
-	// 		byts, err := ioutil.ReadFile(cfg.CertFile)
-	// 		if err != nil {
-	// 			log.Fatalln(err.Error())
-	// 		}
-	// 		return string(byts)
-	// 	}(),
-	// 	TLSClientKey: func() string {
-	// 		byts, err := ioutil.ReadFile(cfg.KeyFile)
-	// 		if err != nil {
-	// 			log.Fatalln(err.Error())
-	// 		}
-	// 		return string(byts)
-	// 	}(),
-	// 	HTTPClient: proxyClient,
-	// })
+	instance, err = lxd.ConnectLXD(cfg.ServerURL, &lxd.ConnectionArgs{
+		TLSClientCert: func() string {
+			byts, err := ioutil.ReadFile(cfg.CertFile)
+			if err != nil {
+				log.Fatalln(err.Error())
+			}
+			return string(byts)
+		}(),
+		TLSClientKey: func() string {
+			byts, err := ioutil.ReadFile(cfg.KeyFile)
+			if err != nil {
+				log.Fatalln(err.Error())
+			}
+			return string(byts)
+		}(),
+		HTTPClient:         proxyClient,
+		InsecureSkipVerify: true,
+	})
 	// instance, err = lxd.ConnectLXDUnix("", nil)
-	// if err != nil {
-	// 	log.Fatalln("cannot connect to lxd server")
-	// }
-	// defer instance.Disconnect()
+	if err != nil {
+		//log.Fatalln("cannot connect to lxd server")
+		log.Fatalln(err.Error())
+	}
+	defer instance.Disconnect()
 
 	bot.Handle("/start", handleStart)
 	bot.Handle("/create", handleCreate)

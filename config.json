@@ -1,5 +1,8 @@
 {
       "bot_token":"5351151084:AAGsbmpUnkM1OQCeTGPk7XJgR_7J4PVdcPE",
       "proxy":"socks5://127.0.0.1:10808",
-      "db_path":"database.db"
+      "db_path":"database.db",
+      "cert_file":"lxd.v2up.eu.org.cert.pem",
+      "key_file":"lxd.v2up.eu.org.key.pem",
+      "server_url":"https://hax.v2up.tk:8443"
 }

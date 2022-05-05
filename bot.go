@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/boltdb/bolt"
@@ -16,7 +17,7 @@ type tBot struct {
 var bot *tBot = &tBot{}
 
 const (
-	isDebug = false
+	isDebug = true
 )
 
 func handleStart(c telebot.Context) error {
@@ -78,7 +79,8 @@ func handlePing(c telebot.Context) error {
 
 func handleInstanceControl(c telebot.Context) error {
 	// TODO instance control
-	if !c.Chat().Private {
+	if !c.Message().Private() {
+		log.Println("not private chat")
 		return c.Bot().Delete(c.Message())
 	}
 	u := &tUser{UID: c.Sender().ID}
@@ -86,10 +88,11 @@ func handleInstanceControl(c telebot.Context) error {
 	if err != nil {
 		return err
 	}
+	msg := u.FormatInfo() + "\n" + HR
 	uuid := strings.Split(c.Args()[0], "@")[0]
-	if !u.HasInstance(uuid) {
-		return c.Send("该实例不属于你或实例UUID错误")
-	}
+	// if !u.HasInstance(uuid) {
+	// 	return c.Send("该实例不属于你或实例UUID错误")
+	// }
 	state, err := GetInstanceState(uuid)
 	if err != nil {
 		return c.Send("获取实例状态失败，稍后再试")
@@ -98,7 +101,7 @@ func handleInstanceControl(c telebot.Context) error {
 	if err != nil {
 		return c.Send("获取实例配置文件失败，稍后再试")
 	}
-	msg := fmt.Sprintf("CPU: \n内存: %-5s/%5s\n磁盘: %-5s/%5s\n网络: 下行%-7s\t上行%-7s",
+	msg = msg + "\n" + fmt.Sprintf("CPU: \n内存: %-5s/%5s\n磁盘: %-5s/%5s\n网络: 下行%-7s\t上行%-7s",
 		formatSize(state.Memory.Usage), profile.Config["limits.memory"],
 		formatSize(state.Disk["root"].Usage), profile.Devices["root"]["size"],
 		formatSize(state.Network["eth0"].Counters.BytesReceived),
