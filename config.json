@@ -4,5 +4,5 @@
       "db_path":"database.db",
       "cert_file":"lxd.v2up.eu.org.cert.pem",
       "key_file":"lxd.v2up.eu.org.key.pem",
-      "server_url":"https://hax.v2up.tk:8443"
+      "server_url":"https://hk-az.v2up.tk:8443"
 }

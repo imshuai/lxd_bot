@@ -21,12 +21,18 @@ const (
 )
 
 func handleStart(c telebot.Context) error {
+	if !c.Message().Private() {
+		return c.Bot().Delete(c.Message())
+	}
 	msg := "欢迎使用本Bot！\n你可以发送 /create 命令来创建一个32MB内存的实例\n然后记得每天发送 /checkin 来签到"
 	return c.Send(msg)
 }
 
 func handleCreate(c telebot.Context) error {
 	// TODO 实例创建
+	if !c.Message().Private() {
+		return c.Bot().Delete(c.Message())
+	}
 	var msg string
 	var err error
 	uname := c.Sender().Username
@@ -49,7 +55,13 @@ func handleCreate(c telebot.Context) error {
 		return c.Send(msg)
 	}
 	msg = "创建成功！" + HR + "\n" + u.FormatInfo() + "\n" + HR + fmt.Sprintf("\n务必于%s前签到", u.Expiration.String())
-	return c.Send(msg)
+	inlineKeyboard := bot.NewMarkup()
+	inlineKeyboard.Inline(telebot.Row{
+		{Text: "管理实例",
+			URL: fmt.Sprintf("/control %s", u.UUID),
+		},
+	})
+	return c.Send(msg, inlineKeyboard)
 }
 
 func handleCheckin(c telebot.Context) error {

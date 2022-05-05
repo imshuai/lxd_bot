@@ -132,6 +132,7 @@ func (u *tUser) Save() error {
 func (u *tUser) CreateInstance() error {
 	if u.UseableNum >= 1 {
 		//TODO: 允许用户创建实例
+
 	}
 	return ErrorOverQuota
 }
