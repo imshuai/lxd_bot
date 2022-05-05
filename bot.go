@@ -78,10 +78,34 @@ func handlePing(c telebot.Context) error {
 func handleInstanceControl(c telebot.Context) error {
 	// TODO instance control
 	uuid := c.Args()[0]
-	return c.Send(uuid)
+	markup := bot.NewMarkup()
+	markup.Inline([]telebot.Row{
+		{
+			telebot.Btn{
+				Text: "开机",
+				Data: "data 1",
+			},
+			telebot.Btn{
+				Text: "关机",
+				Data: "data 2",
+			},
+		},
+		{
+			telebot.Btn{
+				Text: "重启",
+				Data: "data 3",
+			},
+			telebot.Btn{
+				Text: "删机",
+				Data: "data 4",
+			},
+		},
+	}...)
+	return c.Send(uuid, markup)
+
 }
 
 func handleCallback(c telebot.Context) error {
 	// TODO inline keyboard callback
-	return nil
+	return c.Edit(c.Callback().Data)
 }
