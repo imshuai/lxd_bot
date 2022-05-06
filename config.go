@@ -16,6 +16,7 @@ type config struct {
 	CertFile  string `json:"cert_file"`
 	KeyFile   string `json:"key_file"`
 	ServerURL string `json:"server_url"`
+	AdminID   int64  `json:"admin_id"`
 }
 
 func readConfig(cfgPath string) *config {

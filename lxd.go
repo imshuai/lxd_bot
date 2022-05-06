@@ -39,18 +39,27 @@ func DeleteInstance(name string) error {
 	return op.Wait()
 }
 
-func CreateInstance(profile string) (uuid string, err error) {
+func CreateInstance(name, profile string) (err error) {
 	op, err := instance.CreateInstance(api.InstancesPost{
-		Name: getUUID(),
-		Source: api.InstanceSource{
-			Type:  "image",
-			Alias: "base",
+		InstancePut: api.InstancePut{
+			Architecture: "",
+			Config:       map[string]string{},
+			Devices:      map[string]map[string]string{},
+			Ephemeral:    false,
+			Profiles:     []string{profile},
+			Restore:      "",
+			Stateful:     false,
+			Description:  "",
 		},
-		Type: api.InstanceTypeContainer,
+		Name:         name,
+		Source:       api.InstanceSource{Type: "image", Alias: "alpine-base"},
+		InstanceType: "",
+		Type:         api.InstanceTypeContainer,
 	})
 	if err != nil {
-		return "", err
+		return err
 	}
+	return op.Wait()
 }
 
 func GetInstanceState(name string) (*api.InstanceState, error) {

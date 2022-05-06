@@ -16,6 +16,7 @@ import (
 	lxd "github.com/lxc/lxd/client"
 	"golang.org/x/net/proxy"
 	"gopkg.in/telebot.v3"
+	"gopkg.in/telebot.v3/middleware"
 )
 
 func main() {
@@ -86,10 +87,31 @@ func main() {
 	bot.Handle("/start", handleStart)
 	bot.Handle("/create", handleCreate)
 	bot.Handle("/checkin", handleCheckin)
-
 	bot.Handle("/control", handleInstanceControl)
-
 	bot.Handle("/ping", handlePing)
+
+	manager := bot.Group()
+	manager.Use(func(next telebot.HandlerFunc) telebot.HandlerFunc {
+		return func(c telebot.Context) error {
+			uid := c.Sender().ID
+			u := &tUser{UID: uid}
+			err := u.Get()
+			if err != nil {
+				return c.Send(nil)
+			}
+			if u.IsManager {
+				c.Set("user", u)
+				return next(c)
+			}
+			return c.Send("请不要乱点管理员命令")
+		}
+	})
+	manager.Handle("/addmanager", handleAddManager, middleware.Whitelist(cfg.AdminID))
+	manager.Handle("/delmanager", handleDeleteManager, middleware.Whitelist(cfg.AdminID))
+	manager.Handle("/getuserlist", handleGetUserList)
+	manager.Handle("/banuser", handleBanUser)
+	manager.Handle("/getuserinfo", handleGetUserInfo)
+	manager.Handle("/delinstance", handleDeleteInstance)
 
 	bot.Handle(telebot.OnCallback, handleCallback)
 

@@ -30,6 +30,7 @@ type tUser struct {
 	Instances   map[string]struct{} `json:"instances"`
 	Profie      string              `json:"profie"`
 	NodeName    string              `json:"node_name"`
+	IsManager   bool                `json:"is_manager"`
 	locker      *sync.RWMutex
 }
 

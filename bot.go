@@ -153,3 +153,29 @@ func handleCallback(c telebot.Context) error {
 	// TODO inline keyboard callback
 	return c.Edit(c.Callback().Data)
 }
+
+func handleAddManager(c telebot.Context) error {
+	u := c.Get("user").(*tUser)
+	u.IsManager = true
+	err := u.Save()
+	if err != nil {
+		return c.Send(fmt.Sprintf("添加%s为管理员失败！\n%s\nError:%s", c.Sender().Username, HR, err.Error()))
+	}
+	return c.Send(fmt.Sprintf("添加%s为管理员成功！", c.Sender().Username))
+}
+
+func handleDeleteManager(c telebot.Context) error {
+	return nil
+}
+func handleGetUserList(c telebot.Context) error {
+	return nil
+}
+func handleBanUser(c telebot.Context) error {
+	return nil
+}
+func handleGetUserInfo(c telebot.Context) error {
+	return nil
+}
+func handleDeleteInstance(c telebot.Context) error {
+	return nil
+}
