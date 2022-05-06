@@ -41,23 +41,6 @@ func main() {
 	}
 
 	var err error
-	bot.Bot, err = telebot.NewBot(telebot.Settings{
-		Token:   cfg.Token,
-		Poller:  &telebot.LongPoller{Timeout: time.Second * 60},
-		Client:  proxyClient,
-		Verbose: isDebug,
-	})
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	log.Printf("Authorized on account %s\n", bot.Me.Username)
-
-	bot.db, err = bolt.Open(cfg.DBPath, 0664, bolt.DefaultOptions)
-	if err != nil {
-		log.Fatalf("cannot open database with error: %s\n", err.Error())
-	}
-	defer bot.db.Close()
 
 	instance, err = lxd.ConnectLXD(cfg.ServerURL, &lxd.ConnectionArgs{
 		TLSClientCert: func() string {
@@ -84,23 +67,35 @@ func main() {
 	}
 	defer instance.Disconnect()
 
-	bot.Handle("/start", handleStart)
-	bot.Handle("/create", handleCreate)
-	bot.Handle("/checkin", handleCheckin)
-	bot.Handle("/control", handleInstanceControl)
+	bot.Bot, err = telebot.NewBot(telebot.Settings{
+		Token:   cfg.Token,
+		Poller:  &telebot.LongPoller{Timeout: time.Second * 60},
+		Client:  proxyClient,
+		Verbose: isDebug,
+	})
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	log.Printf("Authorized on account %s\n", bot.Me.Username)
+
+	bot.db, err = bolt.Open(cfg.DBPath, 0664, bolt.DefaultOptions)
+	if err != nil {
+		log.Fatalf("cannot open database with error: %s\n", err.Error())
+	}
+	defer bot.db.Close()
+
+	bot.Handle("/start", handleStart, IsPrivateMessage)
+	bot.Handle("/create", handleCreate, GetUserInfo, IsPrivateMessage)
+	bot.Handle("/checkin", handleCheckin, GetUserInfo)
+	bot.Handle("/control", handleInstanceControl, GetUserInfo, IsPrivateMessage)
 	bot.Handle("/ping", handlePing)
 
 	manager := bot.Group()
-	manager.Use(func(next telebot.HandlerFunc) telebot.HandlerFunc {
+	manager.Use(GetUserInfo, func(next telebot.HandlerFunc) telebot.HandlerFunc {
 		return func(c telebot.Context) error {
-			uid := c.Sender().ID
-			u := &tUser{UID: uid}
-			err := u.Get()
-			if err != nil {
-				return c.Send(nil)
-			}
+			u := c.Get("user").(*tUser)
 			if u.IsManager {
-				c.Set("user", u)
 				return next(c)
 			}
 			return c.Send("请不要乱点管理员命令")
@@ -108,10 +103,10 @@ func main() {
 	})
 	manager.Handle("/addmanager", handleAddManager, middleware.Whitelist(cfg.AdminID))
 	manager.Handle("/delmanager", handleDeleteManager, middleware.Whitelist(cfg.AdminID))
-	manager.Handle("/getuserlist", handleGetUserList)
+	manager.Handle("/getuserlist", handleGetUserList, IsPrivateMessage)
 	manager.Handle("/banuser", handleBanUser)
 	manager.Handle("/getuserinfo", handleGetUserInfo)
-	manager.Handle("/delinstance", handleDeleteInstance)
+	manager.Handle("/delinstance", handleDeleteInstance, IsPrivateMessage)
 
 	bot.Handle(telebot.OnCallback, handleCallback)
 

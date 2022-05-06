@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"time"
-
-	"github.com/pborman/uuid"
 )
 
 var (
@@ -41,10 +39,6 @@ func tNow() tTime {
 
 func tExpiration(t tTime) tTime {
 	return tTime{t.Add(ExpirationTime)}
-}
-
-func getUUID() string {
-	return uuid.New()
 }
 
 // 字节的单位转换 保留两位小数

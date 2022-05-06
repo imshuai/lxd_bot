@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
-	"github.com/pborman/uuid"
 )
 
 const (
@@ -20,7 +19,6 @@ var ExpirationTime = time.Hour * 24 * 7
 type tUser struct {
 	Name        string              `json:"name"`
 	UID         int64               `json:"uid"`
-	UUID        string              `json:"uuid"`
 	ChatID      int64               `json:"chat_id"`
 	Created     tTime               `json:"created"`
 	LastCheckin tTime               `json:"last_checkin"`
@@ -43,9 +41,8 @@ func (u *tUser) String() string {
 }
 
 func (u *tUser) FormatInfo() string {
-	return fmt.Sprintf("用户ID: %d\nUUID: %s\n创建时间: %v\n签到时间: %v\n过期时间: %v\nSSH端口: %d\n剩余可用实例数量: %d",
+	return fmt.Sprintf("用户ID: %d\n创建时间: %v\n签到时间: %v\n过期时间: %v\nSSH端口: %d\n剩余可用实例数量: %d",
 		u.UID,
-		u.UUID,
 		u.Created.String(),
 		u.LastCheckin.String(),
 		u.Expiration.String(),
@@ -66,11 +63,8 @@ func ParseUser(str string) (*tUser, error) {
 func NewUser(name string, uid int64, chatID int64) (*tUser, error) {
 	t := tNow()
 	u := &tUser{
-		Name: name,
-		UID:  uid,
-		UUID: func() string {
-			return uuid.New()
-		}(),
+		Name:        name,
+		UID:         uid,
 		ChatID:      chatID,
 		Created:     t,
 		LastCheckin: t,
@@ -96,7 +90,7 @@ func (u *tUser) Key() []byte {
 }
 
 func (u *tUser) Get() error {
-	err := bot.db.View(func(tx *bolt.Tx) error {
+	return bot.db.View(func(tx *bolt.Tx) error {
 		bck := tx.Bucket([]byte(USERS))
 		if bck == nil {
 			return ErrorKeyNotFound
@@ -112,10 +106,6 @@ func (u *tUser) Get() error {
 		*u = *uu
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (u *tUser) Save() error {

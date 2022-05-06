@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"strings"
+	"time"
 
 	"github.com/boltdb/bolt"
 	"gopkg.in/telebot.v3"
@@ -21,9 +21,6 @@ const (
 )
 
 func handleStart(c telebot.Context) error {
-	if !c.Message().Private() {
-		return c.Bot().Delete(c.Message())
-	}
 	msg := "欢迎使用本Bot！\n你可以发送 /create 命令来创建一个32MB内存的实例\n然后记得每天发送 /checkin 来签到"
 	return c.Send(msg)
 }
@@ -58,7 +55,7 @@ func handleCreate(c telebot.Context) error {
 	inlineKeyboard := bot.NewMarkup()
 	inlineKeyboard.Inline(telebot.Row{
 		{Text: "管理实例",
-			URL: fmt.Sprintf("/control %s", u.UUID),
+			URL: fmt.Sprintf("/control %s", u.Name),
 		},
 	})
 	return c.Send(msg, inlineKeyboard)
@@ -66,33 +63,32 @@ func handleCreate(c telebot.Context) error {
 
 func handleCheckin(c telebot.Context) error {
 	var msg string
-	u := &tUser{UID: c.Sender().ID}
-	err := u.Get()
-	if err == ErrorKeyNotFound {
-		msg = "你现在还无法签到, 请先给机器人发送一条消息建立用户信息"
+	u := c.Get("user").(*tUser)
+	if len(u.Instances) <= 0 {
+		msg = "你现在还没有可以续期的实例，无需签到"
 	} else {
-		if len(u.Instances) <= 0 {
-			msg = "你现在还没有可以续期的实例，无需签到"
+		err := u.Checkin()
+		if err != nil {
+			msg = "签到失败，发生错误\n" + HR + "\n" + err.Error() + "\n" + HR
 		} else {
-			err = u.Checkin()
-			if err != nil {
-				msg = "发生错误\n" + HR + "\n" + err.Error() + "\n" + HR
-			} else {
-				msg = "签到成功\n" + HR + "\n" + u.FormatInfo() + "\n" + HR
-			}
+			msg = "签到成功\n" + HR + "\n" + u.FormatInfo() + "\n" + HR
 		}
 	}
 	return c.Send(msg)
 }
 
 func handlePing(c telebot.Context) error {
-	return c.Send("我还活着！")
+	msgTime := tTime{c.Message().Time().In(SHANGHAI)}
+	now := tNow()
+	if msgTime.Add(time.Minute * 5).After(now.Time) {
+		return c.Send("我还活着! \n" + HR + "\n" + "消息时间: " + msgTime.String() + "\n响应时间: " + now.String() + "\n响应延迟: " + now.Sub(msgTime.Time).String())
+	}
+	return c.Send("我活过来了！ \n" + HR + "\n" + "消息时间: " + msgTime.String() + "\n响应时间: " + now.String() + "\n响应延迟: " + now.Sub(msgTime.Time).String())
 }
 
 func handleInstanceControl(c telebot.Context) error {
 	// TODO instance control
 	if !c.Message().Private() {
-		log.Println("not private chat")
 		return c.Bot().Delete(c.Message())
 	}
 	u := &tUser{UID: c.Sender().ID}
@@ -165,9 +161,16 @@ func handleAddManager(c telebot.Context) error {
 }
 
 func handleDeleteManager(c telebot.Context) error {
-	return nil
+	u := c.Get("user").(*tUser)
+	u.IsManager = false
+	err := u.Save()
+	if err != nil {
+		return c.Send(fmt.Sprintf("删除%s管理员权限失败！\n%s\nError:%s", c.Sender().Username, HR, err.Error()))
+	}
+	return c.Send(fmt.Sprintf("删除%s管理员权限成功！", c.Sender().Username))
 }
 func handleGetUserList(c telebot.Context) error {
+
 	return nil
 }
 func handleBanUser(c telebot.Context) error {
