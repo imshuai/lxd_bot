@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"gopkg.in/telebot.v3"
 )
@@ -24,9 +23,9 @@ func GetUserInfo(next telebot.HandlerFunc) telebot.HandlerFunc {
 func IsPrivateMessage(next telebot.HandlerFunc) telebot.HandlerFunc {
 	return func(c telebot.Context) error {
 		if !c.Message().Private() {
-			c.Send("该命令仅限于私聊bot使用")
-			c.DeleteAfter(time.Second * 5)
-			return nil
+			msg, _ := bot.Send(c.Recipient(), fmt.Sprintf("该命令仅限于私聊bot使用"))
+			c.Delete()
+			return c.Bot().Delete(msg)
 		}
 		return next(c)
 	}
