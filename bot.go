@@ -33,7 +33,7 @@ func handleCreate(c telebot.Context) error {
 	uname := c.Sender().Username
 	uid := c.Sender().ID
 	chatid := c.Chat().ID
-	u := &tUser{
+	u := &User{
 		UID: uid,
 	}
 	err = u.Get()
@@ -49,12 +49,12 @@ func handleCreate(c telebot.Context) error {
 		msg = err.Error()
 		return c.Send(msg)
 	}
-	msg = "创建成功！" + HR + "\n" + u.FormatInfo() + "\n" + HR + fmt.Sprintf("\n务必于%s前签到", u.Expiration.String())
+	msg = "创建成功！\n" + HR + "\n" + u.FormatInfo() + "\n" + HR + fmt.Sprintf("\n务必于%s前签到", u.Expiration.String())
 	inlineKeyboard := bot.NewMarkup()
 	inlineKeyboard.Inline(telebot.Row{
 		{
 			Text: "管理实例",
-			URL:  fmt.Sprintf("/control %s", u.Name),
+			Data: fmt.Sprintf("/control %s", u.Name),
 		},
 	})
 	return c.Send(msg, inlineKeyboard)
@@ -62,7 +62,7 @@ func handleCreate(c telebot.Context) error {
 
 func handleCheckin(c telebot.Context) error {
 	var msg string
-	u := c.Get("user").(*tUser)
+	u := c.Get("user").(*User)
 	if len(u.Instances) <= 0 {
 		msg = "你现在还没有可以续期的实例，无需签到"
 	} else {
@@ -87,24 +87,32 @@ func handlePing(c telebot.Context) error {
 
 func handleInstanceControl(c telebot.Context) error {
 	// TODO instance control
-	if !c.Message().Private() {
-		return c.Bot().Delete(c.Message())
+	var instanceName string
+	if i := c.Get("instanceName"); i == nil {
+		instanceName = strings.Split(c.Args()[0], "@")[0]
+		if instanceName == "" {
+			return c.Send("必须提供正确的实例名称")
+		}
+	} else {
+		instanceName = c.Get("instanceName").(string)
 	}
-	u := &tUser{UID: c.Sender().ID}
+	u := c.Get("user").(*User)
 	err := u.Get()
 	if err != nil {
 		return err
 	}
-	msg := u.FormatInfo() + "\n" + HR
-	uuid := strings.Split(c.Args()[0], "@")[0]
-	// if !u.HasInstance(uuid) {
-	// 	return c.Send("该实例不属于你或实例UUID错误")
+
+	// if !u.HasInstance(instanceName) {
+	// 	return c.Send("该实例不属于你")
 	// }
-	state, err := GetInstanceState(uuid)
+
+	msg := u.FormatInfo() + "\n" + HR
+
+	state, err := GetInstanceState(instanceName)
 	if err != nil {
 		return c.Send("获取实例状态失败，稍后再试")
 	}
-	profile, err := GetInstanceProfile(uuid)
+	profile, err := GetInstanceProfile(instanceName)
 	if err != nil {
 		return c.Send("获取实例配置文件失败，稍后再试")
 	}
@@ -117,24 +125,24 @@ func handleInstanceControl(c telebot.Context) error {
 	markup.Inline([]telebot.Row{
 		{
 			telebot.Btn{
-				Unique: uuid,
+				Unique: instanceName,
 				Text:   "开机",
 				Data:   "start",
 			},
 			telebot.Btn{
-				Unique: uuid,
+				Unique: instanceName,
 				Text:   "关机",
 				Data:   "stop",
 			},
 		},
 		{
 			telebot.Btn{
-				Unique: uuid,
+				Unique: instanceName,
 				Text:   "重启",
 				Data:   "restart",
 			},
 			telebot.Btn{
-				Unique: uuid,
+				Unique: instanceName,
 				Text:   "删机",
 				Data:   "delete",
 			},
@@ -150,7 +158,7 @@ func handleCallback(c telebot.Context) error {
 }
 
 func handleAddManager(c telebot.Context) error {
-	u := c.Get("user").(*tUser)
+	u := c.Get("user").(*User)
 	u.IsManager = true
 	err := u.Save()
 	if err != nil {
@@ -160,7 +168,7 @@ func handleAddManager(c telebot.Context) error {
 }
 
 func handleDeleteManager(c telebot.Context) error {
-	u := c.Get("user").(*tUser)
+	u := c.Get("user").(*User)
 	u.IsManager = false
 	err := u.Save()
 	if err != nil {

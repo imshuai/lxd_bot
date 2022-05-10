@@ -15,12 +15,17 @@ import (
 
 	"github.com/boltdb/bolt"
 	lxd "github.com/lxc/lxd/client"
+	"github.com/urfave/cli"
 	"golang.org/x/net/proxy"
 	"gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 )
 
 func main() {
+	app := cli.NewApp()
+
+	app.Run(os.Args)
+
 	cfgPath := flag.String("config", "config.json", "config file path")
 	flag.Parse()
 	cfg := readConfig(*cfgPath)
@@ -43,7 +48,7 @@ func main() {
 
 	var err error
 
-	instance, err = lxd.ConnectLXD(cfg.ServerURL, &lxd.ConnectionArgs{
+	instance, err = lxd.ConnectLXD(cfg.Nodes[0].Address+":"+cfg.Nodes[0].Port, &lxd.ConnectionArgs{
 		TLSClientCert: func() string {
 			byts, err := ioutil.ReadFile(cfg.CertFile)
 			if err != nil {
@@ -95,7 +100,7 @@ func main() {
 	manager := bot.Group()
 	manager.Use(GetUserInfo, func(next telebot.HandlerFunc) telebot.HandlerFunc {
 		return func(c telebot.Context) error {
-			u := c.Get("user").(*tUser)
+			u := c.Get("user").(*User)
 			if u.IsManager {
 				return next(c)
 			}

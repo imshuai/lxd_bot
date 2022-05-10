@@ -15,8 +15,12 @@ type config struct {
 	GroupID   string `json:"group_id"`
 	CertFile  string `json:"cert_file"`
 	KeyFile   string `json:"key_file"`
-	ServerURL string `json:"server_url"`
-	AdminID   int64  `json:"admin_id"`
+	Nodes     []struct {
+		Name    string `json:"name"`
+		Address string `json:"address"`
+		Port    string `json:"port"`
+	} `json:"nodes"`
+	AdminID int64 `json:"admin_id"`
 }
 
 func readConfig(cfgPath string) *config {
