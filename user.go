@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
+	"github.com/imshuai/sysutils"
 )
 
 const (
@@ -20,9 +21,9 @@ type tUser struct {
 	Name        string              `json:"name"`
 	UID         int64               `json:"uid"`
 	ChatID      int64               `json:"chat_id"`
-	Created     tTime               `json:"created"`
-	LastCheckin tTime               `json:"last_checkin"`
-	Expiration  tTime               `json:"expiration"`
+	Created     sysutils.Time       `json:"created"`
+	LastCheckin sysutils.Time       `json:"last_checkin"`
+	Expiration  sysutils.Time       `json:"expiration"`
 	SSHPort     int                 `json:"ssh_port"`
 	UseableNum  int                 `json:"useable_num"`
 	Instances   map[string]struct{} `json:"instances"`
@@ -61,7 +62,7 @@ func ParseUser(str string) (*tUser, error) {
 }
 
 func NewUser(name string, uid int64, chatID int64) (*tUser, error) {
-	t := tNow()
+	t := sysutils.Now()
 	u := &tUser{
 		Name:        name,
 		UID:         uid,
@@ -121,6 +122,7 @@ func (u *tUser) Save() error {
 }
 
 func (u *tUser) CreateInstance() error {
+	return nil
 	if u.UseableNum >= 1 {
 		//TODO: 允许用户创建实例
 
@@ -131,7 +133,7 @@ func (u *tUser) CreateInstance() error {
 func (u *tUser) Checkin() error {
 	u.locker.Lock()
 	defer u.locker.Unlock()
-	u.LastCheckin = tNow()
+	u.LastCheckin = sysutils.Now()
 	u.Expiration = tExpiration(u.LastCheckin)
 	err := bot.db.Update(func(tx *bolt.Tx) error {
 		bck, err := tx.CreateBucketIfNotExists([]byte(USERS))

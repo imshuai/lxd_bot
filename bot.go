@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
+	"github.com/imshuai/sysutils"
 	"gopkg.in/telebot.v3"
 )
 
@@ -27,9 +28,6 @@ func handleStart(c telebot.Context) error {
 
 func handleCreate(c telebot.Context) error {
 	// TODO 实例创建
-	if !c.Message().Private() {
-		return c.Bot().Delete(c.Message())
-	}
 	var msg string
 	var err error
 	uname := c.Sender().Username
@@ -54,8 +52,9 @@ func handleCreate(c telebot.Context) error {
 	msg = "创建成功！" + HR + "\n" + u.FormatInfo() + "\n" + HR + fmt.Sprintf("\n务必于%s前签到", u.Expiration.String())
 	inlineKeyboard := bot.NewMarkup()
 	inlineKeyboard.Inline(telebot.Row{
-		{Text: "管理实例",
-			URL: fmt.Sprintf("/control %s", u.Name),
+		{
+			Text: "管理实例",
+			URL:  fmt.Sprintf("/control %s", u.Name),
 		},
 	})
 	return c.Send(msg, inlineKeyboard)
@@ -74,16 +73,16 @@ func handleCheckin(c telebot.Context) error {
 			msg = "签到成功\n" + HR + "\n" + u.FormatInfo() + "\n" + HR
 		}
 	}
-	return c.Send(msg)
+	return c.Reply(msg)
 }
 
 func handlePing(c telebot.Context) error {
-	msgTime := tTime{c.Message().Time().In(SHANGHAI)}
-	now := tNow()
+	msgTime := sysutils.Time{c.Message().Time().In(sysutils.SHANGHAI)}
+	now := sysutils.Now()
 	if msgTime.Add(time.Minute * 5).After(now.Time) {
-		return c.Send("我还活着! \n" + HR + "\n" + "消息时间: " + msgTime.String() + "\n响应时间: " + now.String() + "\n响应延迟: " + now.Sub(msgTime.Time).String())
+		return c.Reply("我还活着! \n" + HR + "\n" + "消息时间: " + msgTime.String() + "\n响应时间: " + now.String() + "\n响应延迟: " + now.Sub(msgTime.Time).String())
 	}
-	return c.Send("我活过来了！ \n" + HR + "\n" + "消息时间: " + msgTime.String() + "\n响应时间: " + now.String() + "\n响应延迟: " + now.Sub(msgTime.Time).String())
+	return c.Reply("我活过来了！ \n" + HR + "\n" + "消息时间: " + msgTime.String() + "\n响应时间: " + now.String() + "\n响应延迟: " + now.Sub(msgTime.Time).String())
 }
 
 func handleInstanceControl(c telebot.Context) error {
@@ -110,10 +109,10 @@ func handleInstanceControl(c telebot.Context) error {
 		return c.Send("获取实例配置文件失败，稍后再试")
 	}
 	msg = msg + "\n" + fmt.Sprintf("CPU: \n内存: %-5s/%5s\n磁盘: %-5s/%5s\n网络: 下行%-7s\t上行%-7s",
-		formatSize(state.Memory.Usage), profile.Config["limits.memory"],
-		formatSize(state.Disk["root"].Usage), profile.Devices["root"]["size"],
-		formatSize(state.Network["eth0"].Counters.BytesReceived),
-		formatSize(state.Network["eth0"].Counters.BytesSent))
+		sysutils.FormatSize(state.Memory.Usage), profile.Config["limits.memory"],
+		sysutils.FormatSize(state.Disk["root"].Usage), profile.Devices["root"]["size"],
+		sysutils.FormatSize(state.Network["eth0"].Counters.BytesReceived),
+		sysutils.FormatSize(state.Network["eth0"].Counters.BytesSent))
 	markup := bot.NewMarkup()
 	markup.Inline([]telebot.Row{
 		{

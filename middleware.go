@@ -23,7 +23,7 @@ func GetUserInfo(next telebot.HandlerFunc) telebot.HandlerFunc {
 func IsPrivateMessage(next telebot.HandlerFunc) telebot.HandlerFunc {
 	return func(c telebot.Context) error {
 		if !c.Message().Private() {
-			msg, _ := bot.Send(c.Recipient(), fmt.Sprintf("该命令仅限于私聊bot使用"))
+			msg, _ := bot.Send(c.Recipient(), "该命令仅限于私聊bot使用")
 			c.Delete()
 			return c.Bot().Delete(msg)
 		}

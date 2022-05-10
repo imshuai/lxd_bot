@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -86,7 +87,7 @@ func main() {
 	defer bot.db.Close()
 
 	bot.Handle("/start", handleStart, IsPrivateMessage)
-	bot.Handle("/create", handleCreate, GetUserInfo, IsPrivateMessage)
+	bot.Handle("/create", handleCreate, IsPrivateMessage)
 	bot.Handle("/checkin", handleCheckin, GetUserInfo)
 	bot.Handle("/control", handleInstanceControl, GetUserInfo, IsPrivateMessage)
 	bot.Handle("/ping", handlePing)
@@ -98,7 +99,11 @@ func main() {
 			if u.IsManager {
 				return next(c)
 			}
-			return c.Send("请不要乱点管理员命令")
+			msg, _ := bot.Send(c.Recipient(), "请不要乱点管理员命令")
+			warn, _ := bot.Send(c.Recipient(), fmt.Sprintf("/warn @%s", c.Sender().Username))
+			c.Delete()
+			bot.Delete(msg)
+			return bot.Delete(warn)
 		}
 	})
 	manager.Handle("/addmanager", handleAddManager, middleware.Whitelist(cfg.AdminID))
