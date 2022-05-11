@@ -21,6 +21,10 @@ import (
 	"gopkg.in/telebot.v3/middleware"
 )
 
+var (
+	nodes map[string]*lxd.InstanceServer = make(map[string]*lxd.InstanceServer)
+)
+
 func main() {
 	app := cli.NewApp()
 
