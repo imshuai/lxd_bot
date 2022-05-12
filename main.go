@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -15,83 +14,76 @@ import (
 
 	"github.com/boltdb/bolt"
 	lxd "github.com/lxc/lxd/client"
-	"github.com/urfave/cli"
 	"golang.org/x/net/proxy"
 	"gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 )
 
 var (
-	nodes map[string]*lxd.InstanceServer = make(map[string]*lxd.InstanceServer)
+	nodes map[string]lxd.InstanceServer = make(map[string]lxd.InstanceServer)
 )
 
 func main() {
-	app := cli.NewApp()
-
-	app.Run(os.Args)
-
+	//读取配置文件
 	cfgPath := flag.String("config", "config.json", "config file path")
 	flag.Parse()
-	cfg := readConfig(*cfgPath)
+	bot.cfg = readConfig(*cfgPath)
 
+	//构建代理连接
 	var proxyClient *http.Client
-	switch strings.Split(cfg.Proxy, ":")[0] {
+	switch strings.Split(bot.cfg.Proxy, ":")[0] {
 	case "socks5":
-		proxyDialer, err := proxy.SOCKS5("tcp", strings.TrimPrefix(cfg.Proxy, "socks5://"), nil, proxy.Direct)
+		proxyDialer, err := proxy.SOCKS5("tcp", strings.TrimPrefix(bot.cfg.Proxy, "socks5://"), nil, proxy.Direct)
 		if err != nil {
-			log.Fatalf("cannot parse proxy with error: %s\n", err)
+			log.Fatalf("[proxy]cannot parse proxy with error: %s\n", err)
 		}
 		proxyClient = &http.Client{Transport: &http.Transport{Dial: proxyDialer.Dial}}
 	case "http", "https":
-		proxyUrl, err := url.Parse(cfg.Proxy)
+		proxyUrl, err := url.Parse(bot.cfg.Proxy)
 		if err != nil {
-			log.Fatalf("cannot parse proxy with error: %s\n", err)
+			log.Fatalf("[proxy]cannot parse proxy with error: %s\n", err)
 		}
 		proxyClient = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyUrl)}}
 	}
 
 	var err error
 
-	instance, err = lxd.ConnectLXD(cfg.Nodes[0].Address+":"+cfg.Nodes[0].Port, &lxd.ConnectionArgs{
-		TLSClientCert: func() string {
-			byts, err := ioutil.ReadFile(cfg.CertFile)
-			if err != nil {
-				log.Fatalln(err.Error())
-			}
-			return string(byts)
-		}(),
-		TLSClientKey: func() string {
-			byts, err := ioutil.ReadFile(cfg.KeyFile)
-			if err != nil {
-				log.Fatalln(err.Error())
-			}
-			return string(byts)
-		}(),
-		HTTPClient:         proxyClient,
-		InsecureSkipVerify: true,
-	})
-	// instance, err = lxd.ConnectLXDUnix("", nil)
-	if err != nil {
-		//log.Fatalln("cannot connect to lxd server")
-		log.Fatalln(err.Error())
+	//创建到Node的连接
+	for _, v := range bot.cfg.Nodes {
+		conn, err := ConnectLXD(v.Address, v.Port, proxyClient)
+		if err != nil {
+			log.Printf("[lxd]cannot connect to %s: %s\n", v.Name, err.Error())
+			continue
+		}
+		nodes[v.Name] = conn
 	}
-	defer instance.Disconnect()
 
+	if len(nodes) == 0 {
+		log.Fatalln("[lxd]cannot connect to any nodes")
+	}
+
+	defer func() {
+		for _, conn := range nodes {
+			conn.Disconnect()
+		}
+	}()
+
+	//创建telegram bot
 	bot.Bot, err = telebot.NewBot(telebot.Settings{
-		Token:   cfg.Token,
+		Token:   bot.cfg.Token,
 		Poller:  &telebot.LongPoller{Timeout: time.Second * 60},
 		Client:  proxyClient,
 		Verbose: isDebug,
 	})
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("[bot]cannot create bot with error: %s\n", err.Error())
 	}
 
-	log.Printf("Authorized on account %s\n", bot.Me.Username)
+	log.Printf("[bot]Authorized on account %s\n", bot.Me.Username)
 
-	bot.db, err = bolt.Open(cfg.DBPath, 0664, bolt.DefaultOptions)
+	bot.db, err = bolt.Open(bot.cfg.DBPath, 0664, bolt.DefaultOptions)
 	if err != nil {
-		log.Fatalf("cannot open database with error: %s\n", err.Error())
+		log.Fatalf("[database]cannot open database with error: %s\n", err.Error())
 	}
 	defer bot.db.Close()
 
@@ -115,8 +107,8 @@ func main() {
 			return bot.Delete(warn)
 		}
 	})
-	manager.Handle("/addmanager", handleAddManager, middleware.Whitelist(cfg.AdminID))
-	manager.Handle("/delmanager", handleDeleteManager, middleware.Whitelist(cfg.AdminID))
+	manager.Handle("/addmanager", handleAddManager, middleware.Whitelist(bot.cfg.AdminID))
+	manager.Handle("/delmanager", handleDeleteManager, middleware.Whitelist(bot.cfg.AdminID))
 	manager.Handle("/getuserlist", handleGetUserList, IsPrivateMessage)
 	manager.Handle("/banuser", handleBanUser)
 	manager.Handle("/getuserinfo", handleGetUserInfo)

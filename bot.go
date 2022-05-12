@@ -13,6 +13,7 @@ import (
 type tBot struct {
 	db *bolt.DB
 	*telebot.Bot
+	cfg *config
 }
 
 var bot *tBot = &tBot{}
@@ -89,12 +90,12 @@ func handleInstanceControl(c telebot.Context) error {
 	// TODO instance control
 	var instanceName string
 	if i := c.Get("instanceName"); i == nil {
-		instanceName = strings.Split(c.Args()[0], "@")[0]
+		instanceName = strings.Split(c.Args()[1], "@")[0]
 		if instanceName == "" {
-			return c.Send("必须提供正确的实例名称")
+			return c.Send("must specify an instance name")
 		}
 	} else {
-		instanceName = c.Get("instanceName").(string)
+		instanceName = i.(string)
 	}
 	u := c.Get("user").(*User)
 	err := u.Get()
@@ -102,19 +103,25 @@ func handleInstanceControl(c telebot.Context) error {
 		return err
 	}
 
-	// if !u.HasInstance(instanceName) {
-	// 	return c.Send("该实例不属于你")
-	// }
+	if !u.HasInstance(instanceName) {
+		return c.Send("This instance is not belong to you")
+	}
 
+	i := &Instance{Name: instanceName}
+
+	err = i.Query()
+	if err != nil {
+		return c.Send("Query instance failed with error: " + err.Error() + "\nTry again later!")
+	}
 	msg := u.FormatInfo() + "\n" + HR
 
-	state, err := GetInstanceState(instanceName)
+	state, err := GetInstanceState(i.NodeName, i.Name)
 	if err != nil {
-		return c.Send("获取实例状态失败，稍后再试")
+		return c.Send("Get instance state failed with error: " + err.Error() + "\nTry again later!")
 	}
-	profile, err := GetInstanceProfile(instanceName)
+	profile, err := GetInstanceProfile(i.NodeName, i.Name)
 	if err != nil {
-		return c.Send("获取实例配置文件失败，稍后再试")
+		return c.Send("Get instance profile failed with error: " + err.Error() + "\nTry again later!")
 	}
 	msg = msg + "\n" + fmt.Sprintf("CPU: \n内存: %-5s/%5s\n磁盘: %-5s/%5s\n网络: 下行%-7s\t上行%-7s",
 		sysutils.FormatSize(state.Memory.Usage), profile.Config["limits.memory"],
@@ -125,26 +132,22 @@ func handleInstanceControl(c telebot.Context) error {
 	markup.Inline([]telebot.Row{
 		{
 			telebot.Btn{
-				Unique: instanceName,
-				Text:   "开机",
-				Data:   "start",
+				Text: "开机",
+				Data: "!!control start " + string(i.Key()),
 			},
 			telebot.Btn{
-				Unique: instanceName,
-				Text:   "关机",
-				Data:   "stop",
+				Text: "关机",
+				Data: "!!control stop " + string(i.Key()),
 			},
 		},
 		{
 			telebot.Btn{
-				Unique: instanceName,
-				Text:   "重启",
-				Data:   "restart",
+				Text: "重启",
+				Data: "!!control restart " + string(i.Key()),
 			},
 			telebot.Btn{
-				Unique: instanceName,
-				Text:   "删机",
-				Data:   "delete",
+				Text: "删机",
+				Data: "!!control delete " + string(i.Key()),
 			},
 		},
 	}...)

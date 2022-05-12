@@ -45,6 +45,19 @@ func (i *Instance) Save() error {
 	})
 }
 
+func (i *Instance) Query() error {
+	i.locker.Lock()
+	defer i.locker.Unlock()
+	return bot.db.View(func(tx *bolt.Tx) error {
+		bck, err := tx.CreateBucketIfNotExists(BckInstances)
+		if err != nil {
+			return err
+		}
+		byts := bck.Get([]byte(i.Key()))
+		return json.Unmarshal(byts, i)
+	})
+}
+
 func (i *Instance) Update() error {
 	return nil
 }
