@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/boltdb/bolt"
+	"github.com/lxc/lxd/shared/api"
 )
 
 var (
@@ -60,4 +61,56 @@ func (i *Instance) Query() error {
 
 func (i *Instance) Update() error {
 	return nil
+}
+
+func DeleteInstance(node, name string) error {
+	op, err := nodes[node].DeleteInstance(name)
+	if err != nil {
+		return err
+	}
+	err = op.Wait()
+	if err != nil {
+		return err
+	}
+	// TODO delete instance info in database
+	return nil
+}
+func CreateInstance(node, name, profile string) (err error) {
+	op, err := nodes[node].CreateInstance(api.InstancesPost{
+		InstancePut: api.InstancePut{
+			Architecture: "",
+			Config:       map[string]string{},
+			Devices:      map[string]map[string]string{},
+			Ephemeral:    false,
+			Profiles:     []string{profile},
+			Restore:      "",
+			Stateful:     false,
+			Description:  "",
+		},
+		Name:         name,
+		Source:       api.InstanceSource{Type: "image", Alias: "alpine-base"},
+		InstanceType: "",
+		Type:         api.InstanceTypeContainer,
+	})
+	if err != nil {
+		return err
+	}
+	return op.Wait()
+}
+
+func GetInstanceState(node, name string) (*api.InstanceState, error) {
+	state, _, err := nodes[node].GetInstanceState(name)
+	return state, err
+}
+
+func GetInstanceProfile(node, name string) (*api.Profile, error) {
+	i, _, err := nodes[node].GetInstance(name)
+	if err != nil {
+		return nil, err
+	}
+	profile, _, err := nodes[node].GetProfile(i.Profiles[0])
+	if err != nil {
+		return nil, err
+	}
+	return profile, nil
 }

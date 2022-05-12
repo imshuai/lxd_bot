@@ -192,3 +192,9 @@ func handleGetUserInfo(c telebot.Context) error {
 func handleDeleteInstance(c telebot.Context) error {
 	return nil
 }
+func handleAddNode(c telebot.Context) error {
+	return nil
+}
+func handleDeleteNode(c telebot.Context) error {
+	return nil
+}

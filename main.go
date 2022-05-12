@@ -50,7 +50,7 @@ func main() {
 
 	//创建到Node的连接
 	for _, v := range bot.cfg.Nodes {
-		conn, err := ConnectLXD(v.Address, v.Port, proxyClient)
+		conn, err := ConnectNode(v.Address, v.Port, proxyClient)
 		if err != nil {
 			log.Printf("[lxd]cannot connect to %s: %s\n", v.Name, err.Error())
 			continue
@@ -92,29 +92,33 @@ func main() {
 	bot.Handle("/checkin", handleCheckin, GetUserInfo)
 	bot.Handle("/control", handleInstanceControl, GetUserInfo, IsPrivateMessage)
 	bot.Handle("/ping", handlePing)
+	bot.Handle(telebot.OnCallback, handleCallback)
 
 	manager := bot.Group()
 	manager.Use(GetUserInfo, func(next telebot.HandlerFunc) telebot.HandlerFunc {
 		return func(c telebot.Context) error {
 			u := c.Get("user").(*User)
-			if u.IsManager {
+			if u.IsManager || u.UID == bot.cfg.AdminID {
 				return next(c)
 			}
-			msg, _ := bot.Send(c.Recipient(), "请不要乱点管理员命令")
+			msg, _ := bot.Reply(c.Message(), "请不要乱点管理员命令")
 			warn, _ := bot.Send(c.Recipient(), fmt.Sprintf("/warn @%s", c.Sender().Username))
 			c.Delete()
 			bot.Delete(msg)
 			return bot.Delete(warn)
 		}
 	})
-	manager.Handle("/addmanager", handleAddManager, middleware.Whitelist(bot.cfg.AdminID))
-	manager.Handle("/delmanager", handleDeleteManager, middleware.Whitelist(bot.cfg.AdminID))
 	manager.Handle("/getuserlist", handleGetUserList, IsPrivateMessage)
 	manager.Handle("/banuser", handleBanUser)
 	manager.Handle("/getuserinfo", handleGetUserInfo)
 	manager.Handle("/delinstance", handleDeleteInstance, IsPrivateMessage)
 
-	bot.Handle(telebot.OnCallback, handleCallback)
+	administrator := bot.Group()
+	administrator.Use(middleware.Whitelist(bot.cfg.AdminID))
+	administrator.Handle("/add-node", handleAddNode)
+	administrator.Handle("/del-node", handleDeleteNode)
+	administrator.Handle("/addmanager", handleAddManager)
+	administrator.Handle("/delmanager", handleDeleteManager)
 
 	go bot.Start()
 
