@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -24,41 +26,31 @@ const (
 
 func handleStart(c telebot.Context) error {
 	msg := "欢迎使用本Bot！\n你可以发送 /create 命令来创建一个32MB内存的实例\n然后记得每天发送 /checkin 来签到"
+	uname := c.Sender().Username
+	uid := c.Sender().ID
+	_, err := QueryUser(uid)
+	if err == ErrorKeyNotFound {
+		_, err = NewUser(uname, uid)
+		if err != nil {
+			return c.Send(err.Error())
+		}
+	} else if err != nil {
+		return c.Send(err.Error())
+	}
 	return c.Send(msg)
 }
 
 func handleCreate(c telebot.Context) error {
-	// TODO 实例创建
-	var msg string
-	var err error
-	uname := c.Sender().Username
-	uid := c.Sender().ID
-	chatid := c.Chat().ID
-	u := &User{
-		UID: uid,
+	node := c.Args()[0]
+	if nodes[node] == nil {
+		return c.Reply("must specify correct node name")
 	}
-	err = u.Get()
-	if err == ErrorKeyNotFound {
-		u, err = NewUser(uname, uid, chatid)
-		if err != nil {
-			msg = err.Error()
-			return c.Send(msg)
-		}
-	}
-	err = u.CreateInstance()
+	u := c.Get("user").(*User)
+	instance, err := u.CreateInstance(node, DefaultProfiles)
 	if err != nil {
-		msg = err.Error()
-		return c.Send(msg)
+		return c.Reply(err.Error())
 	}
-	msg = "创建成功！\n" + HR + "\n" + u.FormatInfo() + "\n" + HR + fmt.Sprintf("\n务必于%s前签到", u.Expiration.String())
-	inlineKeyboard := bot.NewMarkup()
-	inlineKeyboard.Inline(telebot.Row{
-		{
-			Text: "管理实例",
-			Data: fmt.Sprintf("/control %s", u.Name),
-		},
-	})
-	return c.Send(msg, inlineKeyboard)
+	return c.Reply(fmt.Sprintf("创建成功!\n%s\n"+TplInstanceInformation+"\n%s", HR, instance.Name, instance.NodeName, instance.SSHPort, instance.NatPorts, instance.IPs(), HR))
 }
 
 func handleCheckin(c telebot.Context) error {
@@ -98,7 +90,7 @@ func handleInstanceControl(c telebot.Context) error {
 		instanceName = i.(string)
 	}
 	u := c.Get("user").(*User)
-	err := u.Get()
+	err := u.Query()
 	if err != nil {
 		return err
 	}
@@ -115,17 +107,17 @@ func handleInstanceControl(c telebot.Context) error {
 	}
 	msg := u.FormatInfo() + "\n" + HR
 
-	state, err := GetInstanceState(i.NodeName, i.Name)
+	instance, err := QueryInstance(i.NodeName, i.Name)
+	if err != nil {
+		return c.Reply("query instance failed with error: " + err.Error())
+	}
+	state, err := instance.State()
 	if err != nil {
 		return c.Send("Get instance state failed with error: " + err.Error() + "\nTry again later!")
 	}
-	profile, err := GetInstanceProfile(i.NodeName, i.Name)
-	if err != nil {
-		return c.Send("Get instance profile failed with error: " + err.Error() + "\nTry again later!")
-	}
-	msg = msg + "\n" + fmt.Sprintf("CPU: \n内存: %-5s/%5s\n磁盘: %-5s/%5s\n网络: 下行%-7s\t上行%-7s",
-		sysutils.FormatSize(state.Memory.Usage), profile.Config["limits.memory"],
-		sysutils.FormatSize(state.Disk["root"].Usage), profile.Devices["root"]["size"],
+	msg = msg + "\n" + fmt.Sprintf("CPU: \n内存: %-5s\n磁盘: %-5s\n网络: 下行%-7s\t上行%-7s",
+		sysutils.FormatSize(state.Memory.Usage),
+		sysutils.FormatSize(state.Disk["root"].Usage),
 		sysutils.FormatSize(state.Network["eth0"].Counters.BytesReceived),
 		sysutils.FormatSize(state.Network["eth0"].Counters.BytesSent))
 	markup := bot.NewMarkup()
@@ -161,9 +153,13 @@ func handleCallback(c telebot.Context) error {
 }
 
 func handleAddManager(c telebot.Context) error {
-	u := c.Get("user").(*User)
+	uid, _ := strconv.ParseInt(c.Args()[0], 10, 64)
+	u, err := QueryUser(uid)
+	if err != nil {
+		return c.Reply("query user failed with error: " + err.Error())
+	}
 	u.IsManager = true
-	err := u.Save()
+	err = u.Save()
 	if err != nil {
 		return c.Send(fmt.Sprintf("添加%s为管理员失败！\n%s\nError:%s", c.Sender().Username, HR, err.Error()))
 	}
@@ -171,9 +167,13 @@ func handleAddManager(c telebot.Context) error {
 }
 
 func handleDeleteManager(c telebot.Context) error {
-	u := c.Get("user").(*User)
+	uid, _ := strconv.ParseInt(c.Args()[0], 10, 64)
+	u, err := QueryUser(uid)
+	if err != nil {
+		return c.Reply("query user failed with error: " + err.Error())
+	}
 	u.IsManager = false
-	err := u.Save()
+	err = u.Save()
 	if err != nil {
 		return c.Send(fmt.Sprintf("删除%s管理员权限失败！\n%s\nError:%s", c.Sender().Username, HR, err.Error()))
 	}
@@ -192,9 +192,44 @@ func handleGetUserInfo(c telebot.Context) error {
 func handleDeleteInstance(c telebot.Context) error {
 	return nil
 }
+
 func handleAddNode(c telebot.Context) error {
-	return nil
+	name := c.Args()[0]
+	address := c.Args()[1]
+	port := c.Args()[2]
+	quota, _ := strconv.Atoi(c.Args()[3])
+	node := &Node{
+		Name:      name,
+		Address:   address,
+		Port:      port,
+		LeftQuota: quota,
+		MaxQuota:  quota,
+		Instances: map[string]int64{},
+		Users:     map[int64]string{},
+		locker:    &sync.RWMutex{},
+	}
+	err := node.Save()
+	if err != nil {
+		return c.Send("Add node failed with error: " + err.Error())
+	}
+	conn, err := node.Connect(proxyClient)
+	if err != nil {
+		return c.Send("cannot connect to node with error: " + err.Error())
+	}
+	nodes[name] = conn
+	return c.Send(fmt.Sprintf("创建新节点成功！\n节点名称：%s\n节点地址：%s\n节点端口：%s\n剩余配额：%d", name, address, port, quota))
 }
+
 func handleDeleteNode(c telebot.Context) error {
+	name := c.Args()[0]
+	node := &Node{Name: name}
+	err := node.Query()
+	if err != nil {
+		return c.Reply("query node failed with error: " + err.Error())
+	}
+	err = node.Delete()
+	if err != nil {
+		return c.Reply("delete node failed with error: " + err.Error())
+	}
 	return nil
 }

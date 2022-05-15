@@ -2,64 +2,110 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/boltdb/bolt"
 	lxd "github.com/lxc/lxd/client"
 )
 
 type Node struct {
-	Name      string              `json:"name"`
-	Address   string              `json:"address"`
-	Port      string              `json:"port"`
-	LeftQuota int                 `json:"left_quota"`
-	Instances map[string]struct{} `json:"instances"`
+	Name      string           `json:"name"`
+	Address   string           `json:"address"`
+	Port      string           `json:"port"`
+	MaxQuota  int              `json:"max_quota"`
+	LeftQuota int              `json:"left_quota"`
+	Instances map[string]int64 `json:"instances"`
+	Users     map[int64]string `json:"users"`
+	locker    *sync.RWMutex
 }
 
 var (
 	BckNodes = []byte("nodes")
 )
 
-func AddNode(n *Node) error {
+func InitNode() error {
 	return bot.db.Update(func(tx *bolt.Tx) error {
 		bck, err := tx.CreateBucketIfNotExists(BckNodes)
 		if err != nil {
 			return err
 		}
-		byts, _ := json.Marshal(n)
-		return bck.Put([]byte(n.Name), byts)
-	})
-}
-
-func DeleteNode(name string) error {
-	return bot.db.Update(func(tx *bolt.Tx) error {
-		bck, err := tx.CreateBucketIfNotExists(BckNodes)
-		if err != nil {
-			return err
-		}
-		node := &Node{}
-		byts := bck.Get([]byte(name))
-		if byts == nil {
-			return ErrorKeyNotFound
-		}
-		err = json.Unmarshal(byts, node)
-		if err != nil {
-			return err
-		}
-		if len(node.Instances) > 0 {
-			for k := range node.Instances {
-				DeleteInstance(name, k)
+		return bck.ForEach(func(k, v []byte) error {
+			node := &Node{}
+			err := json.Unmarshal(v, node)
+			if err != nil {
+				return err
 			}
-		}
-		delete(nodes, name)
-		return bck.Delete([]byte(name))
+			conn, err := node.Connect(proxyClient)
+			if err != nil {
+				return err
+			}
+			nodes[node.Name] = conn
+			return nil
+		})
 	})
 }
 
-func ConnectNode(addr, port string, client *http.Client) (lxd.InstanceServer, error) {
-	return lxd.ConnectLXD(addr+":"+port, &lxd.ConnectionArgs{
+func (n *Node) Key() []byte {
+	return []byte("node:" + n.Name)
+}
+
+func (n *Node) Query() error {
+	n.locker.Lock()
+	defer n.locker.Unlock()
+	return bot.db.View(func(tx *bolt.Tx) error {
+		bck, err := tx.CreateBucketIfNotExists(BckInstances)
+		if err != nil {
+			return err
+		}
+		byts := bck.Get([]byte(n.Key()))
+		return json.Unmarshal(byts, n)
+	})
+}
+
+func (n *Node) Save() error {
+	n.locker.Lock()
+	defer n.locker.Unlock()
+	return bot.db.Update(func(tx *bolt.Tx) error {
+		bck, err := tx.CreateBucketIfNotExists(BckInstances)
+		if err != nil {
+			return err
+		}
+		byts, err := json.Marshal(n)
+		if err != nil {
+			return err
+		}
+		return bck.Put(n.Key(), byts)
+	})
+}
+
+func (n *Node) Delete() error {
+	if n.Name == "" || n.Address == "" || n.Port == "" {
+		return errors.New("must specify name, address and port")
+	}
+	err := n.Query()
+	if err != nil {
+		return err
+	}
+	for uid, instanceName := range n.Users {
+		u := &User{UID: uid}
+		err = u.Query()
+		if err != nil {
+			return err
+		}
+		err = u.DeleteInstance(instanceName, true)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (n *Node) Connect(client *http.Client) (lxd.InstanceServer, error) {
+	return lxd.ConnectLXD(n.Address+":"+n.Port, &lxd.ConnectionArgs{
 		TLSClientCert: func() string {
 			byts, err := ioutil.ReadFile(bot.cfg.CertFile)
 			if err != nil {
@@ -77,4 +123,46 @@ func ConnectNode(addr, port string, client *http.Client) (lxd.InstanceServer, er
 		HTTPClient:         client,
 		InsecureSkipVerify: true,
 	})
+}
+
+func (n *Node) IsExist() bool {
+	err := bot.db.View(func(tx *bolt.Tx) error {
+		bck := tx.Bucket(BckInstances)
+		byts := bck.Get(n.Key())
+		if byts == nil {
+			return ErrorKeyNotFound
+		}
+		return nil
+	})
+	return err != ErrorKeyNotFound
+}
+
+func QueryNode(name string) (*Node, error) {
+	node := &Node{Name: name}
+	err := node.Query()
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+func NewNode(name, address, port string, quota int) (*Node, error) {
+	node := &Node{
+		Name:      name,
+		Address:   address,
+		Port:      port,
+		MaxQuota:  quota,
+		LeftQuota: quota,
+		Instances: map[string]int64{},
+		Users:     map[int64]string{},
+		locker:    &sync.RWMutex{},
+	}
+	if node.IsExist() {
+		return nil, errors.New("node name already exist")
+	}
+	err := node.Save()
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
 }

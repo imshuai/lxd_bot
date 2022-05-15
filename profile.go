@@ -9,3 +9,8 @@ type Profile struct {
 	CPUPriority     string `json:"cpu_priority"`
 	DiskPriority    string `json:"disk_priority"`
 }
+
+var (
+	BckProfiles     = []byte("profiles")
+	DefaultProfiles = []string{"32mb"}
+)

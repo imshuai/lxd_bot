@@ -11,23 +11,30 @@ import (
 	"github.com/imshuai/sysutils"
 )
 
-const (
-	USERS = "users"
+var (
+	BckUsers = []byte("users")
 )
 
 var ExpirationTime = time.Hour * 24 * 7
 
 type User struct {
-	Name        string              `json:"name"`
-	UID         int64               `json:"uid"`
-	Created     sysutils.Time       `json:"created"`
-	LastCheckin sysutils.Time       `json:"last_checkin"`
-	Expiration  sysutils.Time       `json:"expiration"`
-	LeftQuota   int                 `json:"left_quota"`
-	Instances   map[string]struct{} `json:"instances"`
-	Profie      string              `json:"profie"`
-	IsManager   bool                `json:"is_manager"`
+	Name        string            `json:"name"`
+	UID         int64             `json:"uid"`
+	Created     sysutils.Time     `json:"created"`
+	LastCheckin sysutils.Time     `json:"last_checkin"`
+	Expiration  sysutils.Time     `json:"expiration"`
+	LeftQuota   int               `json:"left_quota"`
+	Instances   map[string]string `json:"instances"`
+	IsManager   bool              `json:"is_manager"`
+	IsBlocked   bool              `json:"is_blocked"`
 	locker      *sync.RWMutex
+}
+
+func InitUser() error {
+	return bot.db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists(BckUsers)
+		return err
+	})
 }
 
 func (u *User) String() string {
@@ -57,7 +64,7 @@ func ParseUser(str string) (*User, error) {
 	return u, nil
 }
 
-func NewUser(name string, uid int64, chatID int64) (*User, error) {
+func NewUser(name string, uid int64) (*User, error) {
 	t := sysutils.Now()
 	u := &User{
 		Name:        name,
@@ -66,8 +73,8 @@ func NewUser(name string, uid int64, chatID int64) (*User, error) {
 		LastCheckin: t,
 		Expiration:  tExpiration(t),
 		LeftQuota:   1,
-		Instances:   map[string]struct{}{},
-		Profie:      "",
+		Instances:   make(map[string]string),
+		IsManager:   false,
 		locker:      &sync.RWMutex{},
 	}
 
@@ -83,12 +90,9 @@ func (u *User) Key() []byte {
 	return buf
 }
 
-func (u *User) Get() error {
+func (u *User) Query() error {
 	return bot.db.View(func(tx *bolt.Tx) error {
-		bck := tx.Bucket([]byte(USERS))
-		if bck == nil {
-			return ErrorKeyNotFound
-		}
+		bck := tx.Bucket([]byte(BckUsers))
 		data := bck.Get(u.Key())
 		if data == nil {
 			return ErrorKeyNotFound
@@ -106,7 +110,7 @@ func (u *User) Save() error {
 	u.locker.Lock()
 	defer u.locker.Unlock()
 	return bot.db.Update(func(tx *bolt.Tx) error {
-		bck, err := tx.CreateBucketIfNotExists([]byte(USERS))
+		bck, err := tx.CreateBucketIfNotExists([]byte(BckUsers))
 		if err != nil {
 			return err
 		}
@@ -114,12 +118,37 @@ func (u *User) Save() error {
 	})
 }
 
-func (u *User) CreateInstance() error {
+func (u *User) CreateInstance(node string, profiles []string) (*Instance, error) {
+	u.locker.Lock()
+	defer u.locker.Unlock()
 	if u.LeftQuota >= 1 {
 		//TODO: 允许用户创建实例
-		return nil
+		name := RandString(5, RandStringTypeNumbers)
+		instance := &Instance{
+			Name:     name,
+			NodeName: node,
+			Profiles: profiles,
+			UserID:   u.UID,
+		}
+		err := instance.Create()
+		if err != nil {
+			return nil, err
+		}
+		u.LeftQuota -= 1
+		u.Save()
+		return instance, nil
 	}
-	return ErrorOverQuota
+	return nil, ErrorOverQuota
+}
+
+func (u *User) DeleteInstance(name string, ignoreLXDError bool) error {
+	i := &Instance{Name: name, NodeName: u.Instances[name]}
+	err := i.Delete(ignoreLXDError)
+	if err != nil {
+		return err
+	}
+	delete(u.Instances, name)
+	return u.Save()
 }
 
 func (u *User) Checkin() error {
@@ -128,7 +157,7 @@ func (u *User) Checkin() error {
 	u.LastCheckin = sysutils.Now()
 	u.Expiration = tExpiration(u.LastCheckin)
 	err := bot.db.Update(func(tx *bolt.Tx) error {
-		bck, err := tx.CreateBucketIfNotExists([]byte(USERS))
+		bck, err := tx.CreateBucketIfNotExists([]byte(BckUsers))
 		if err != nil {
 			return err
 		}
@@ -143,4 +172,13 @@ func (u *User) Checkin() error {
 func (u *User) HasInstance(key string) bool {
 	_, ok := u.Instances[key]
 	return ok
+}
+
+func QueryUser(uid int64) (*User, error) {
+	u := &User{UID: uid}
+	err := u.Query()
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
 }

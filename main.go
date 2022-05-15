@@ -20,7 +20,8 @@ import (
 )
 
 var (
-	nodes map[string]lxd.InstanceServer = make(map[string]lxd.InstanceServer)
+	nodes       map[string]lxd.InstanceServer = make(map[string]lxd.InstanceServer)
+	proxyClient *http.Client
 )
 
 func main() {
@@ -30,7 +31,6 @@ func main() {
 	bot.cfg = readConfig(*cfgPath)
 
 	//构建代理连接
-	var proxyClient *http.Client
 	switch strings.Split(bot.cfg.Proxy, ":")[0] {
 	case "socks5":
 		proxyDialer, err := proxy.SOCKS5("tcp", strings.TrimPrefix(bot.cfg.Proxy, "socks5://"), nil, proxy.Direct)
@@ -47,20 +47,6 @@ func main() {
 	}
 
 	var err error
-
-	//创建到Node的连接
-	for _, v := range bot.cfg.Nodes {
-		conn, err := ConnectNode(v.Address, v.Port, proxyClient)
-		if err != nil {
-			log.Printf("[lxd]cannot connect to %s: %s\n", v.Name, err.Error())
-			continue
-		}
-		nodes[v.Name] = conn
-	}
-
-	if len(nodes) == 0 {
-		log.Fatalln("[lxd]cannot connect to any nodes")
-	}
 
 	defer func() {
 		for _, conn := range nodes {
@@ -87,8 +73,21 @@ func main() {
 	}
 	defer bot.db.Close()
 
+	err = InitUser()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	err = InitNode()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	err = InitInstance()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
 	bot.Handle("/start", handleStart, IsPrivateMessage)
-	bot.Handle("/create", handleCreate, IsPrivateMessage)
+	bot.Handle("/create", handleCreate, IsPrivateMessage, GetUserInfo)
 	bot.Handle("/checkin", handleCheckin, GetUserInfo)
 	bot.Handle("/control", handleInstanceControl, GetUserInfo, IsPrivateMessage)
 	bot.Handle("/ping", handlePing)
@@ -115,8 +114,8 @@ func main() {
 
 	administrator := bot.Group()
 	administrator.Use(middleware.Whitelist(bot.cfg.AdminID))
-	administrator.Handle("/add-node", handleAddNode)
-	administrator.Handle("/del-node", handleDeleteNode)
+	administrator.Handle("/addnode", handleAddNode)
+	administrator.Handle("/delnode", handleDeleteNode)
 	administrator.Handle("/addmanager", handleAddManager)
 	administrator.Handle("/delmanager", handleDeleteManager)
 
