@@ -90,6 +90,7 @@ func main() {
 	bot.Handle("/start", handleStart, IsPrivateMessage)
 	bot.Handle("/create", handleCreate, IsPrivateMessage, GetUserInfo)
 	bot.Handle("/checkin", handleCheckin, GetUserInfo)
+	bot.Handle("/list", handleListInstance, IsPrivateMessage, GetUserInfo)
 	bot.Handle("/control", handleInstanceControl, GetUserInfo, IsPrivateMessage)
 	bot.Handle("/ping", handlePing)
 	bot.Handle(telebot.OnCallback, handleCallback)

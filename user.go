@@ -23,7 +23,7 @@ type User struct {
 	LastCheckin sysutils.Time     `json:"last_checkin"`
 	Expiration  sysutils.Time     `json:"expiration"`
 	LeftQuota   int               `json:"left_quota"`
-	Instances   map[string]string `json:"instances"`
+	Instances   map[string]string `json:"instances"` //key:instance name , value:node name
 	IsManager   bool              `json:"is_manager"`
 	IsBlocked   bool              `json:"is_blocked"`
 }

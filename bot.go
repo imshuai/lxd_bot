@@ -104,7 +104,7 @@ func handleInstanceControl(c telebot.Context) error {
 	u := c.Get("user").(*User)
 	err := u.Query()
 	if err != nil {
-		return err
+		return c.Reply(err.Error())
 	}
 
 	if !u.HasInstance(instanceName) {
@@ -157,6 +157,27 @@ func handleInstanceControl(c telebot.Context) error {
 	}...)
 	return c.Send(msg, markup)
 
+}
+
+func handleListInstance(c telebot.Context) error {
+	u := c.Get("user").(*User)
+	err := u.Query()
+	if err != nil {
+		return c.Reply(err.Error())
+	}
+	msg := ""
+	for instanceName, nodeName := range u.Instances {
+		instance, err := QueryInstance(nodeName, instanceName)
+		if err != nil {
+			return c.Reply(err.Error())
+		}
+		state, err := instance.State()
+		if err != nil {
+			return c.Reply(err.Error())
+		}
+		msg = msg + fmt.Sprintf("%12s: %6s\n", instanceName, state.Status)
+	}
+	return c.Reply(fmt.Sprintf("%20s\n下面是你的实例列表：\n%s", c.Sender().FirstName, msg))
 }
 
 func handleCallback(c telebot.Context) error {
