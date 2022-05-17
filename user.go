@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
-	"github.com/imshuai/sysutils"
 )
 
 var (
@@ -19,9 +18,9 @@ var ExpirationTime = time.Hour * 24 * 7
 type User struct {
 	Name        string            `json:"name"`
 	UID         int64             `json:"uid"`
-	Created     sysutils.Time     `json:"created"`
-	LastCheckin sysutils.Time     `json:"last_checkin"`
-	Expiration  sysutils.Time     `json:"expiration"`
+	Created     Time              `json:"created"`
+	LastCheckin Time              `json:"last_checkin"`
+	Expiration  Time              `json:"expiration"`
 	LeftQuota   int               `json:"left_quota"`
 	Instances   map[string]string `json:"instances"` //key:instance name , value:node name
 	IsManager   bool              `json:"is_manager"`
@@ -62,7 +61,7 @@ func ParseUser(str string) (*User, error) {
 }
 
 func NewUser(name string, uid int64) (*User, error) {
-	t := sysutils.Now()
+	t := Now()
 	u := &User{
 		Name:        name,
 		UID:         uid,
@@ -131,6 +130,7 @@ func (u *User) CreateInstance(node string, profiles []string) (*Instance, error)
 			return nil, err
 		}
 		u.LeftQuota -= 1
+		u.Instances[instance.Name] = instance.NodeName
 		u.Save()
 		return instance, nil
 	}
@@ -148,7 +148,7 @@ func (u *User) DeleteInstance(name string, ignoreLXDError bool) error {
 }
 
 func (u *User) Checkin() error {
-	u.LastCheckin = sysutils.Now()
+	u.LastCheckin = Now()
 	u.Expiration = tExpiration(u.LastCheckin)
 	err := bot.db.Update(func(tx *bolt.Tx) error {
 		bck, err := tx.CreateBucketIfNotExists([]byte(BckUsers))
@@ -175,4 +175,19 @@ func QueryUser(uid int64) (*User, error) {
 		return nil, err
 	}
 	return u, nil
+}
+
+func QueryUsers() (users []*User, err error) {
+	return users, bot.db.View(func(tx *bolt.Tx) error {
+		bck := tx.Bucket(BckUsers)
+		return bck.ForEach(func(k, v []byte) error {
+			user := &User{}
+			err := json.Unmarshal(v, user)
+			if err != nil {
+				return err
+			}
+			users = append(users, user)
+			return nil
+		})
+	})
 }

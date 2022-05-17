@@ -55,10 +55,7 @@ func (i *Instance) Save() error {
 //Query get this instance's information from database
 func (i *Instance) Query() error {
 	return bot.db.View(func(tx *bolt.Tx) error {
-		bck, err := tx.CreateBucketIfNotExists(BckInstances)
-		if err != nil {
-			return err
-		}
+		bck := tx.Bucket(BckInstances)
 		byts := bck.Get([]byte(i.Key()))
 		return json.Unmarshal(byts, i)
 	})
@@ -69,7 +66,11 @@ func (i *Instance) Delete(ignoreLXDError bool) error {
 	if i.Name == "" || i.NodeName == "" {
 		return errors.New("must specify instance name and node name")
 	}
-	op, err := nodes[i.NodeName].DeleteInstance(i.Name)
+	conn := nodes[i.NodeName]
+	if conn == nil {
+		return errors.New("cannot connect to node: " + i.NodeName)
+	}
+	op, err := conn.DeleteInstance(i.Name)
 	if err != nil || !ignoreLXDError {
 		return err
 	}
@@ -173,7 +174,7 @@ func (i *Instance) Create() error {
 func (i *Instance) State() (*api.InstanceState, error) {
 	conn := nodes[i.NodeName]
 	if conn == nil {
-		return nil, errors.New("must specify correct node name or node cannot visit now")
+		return nil, errors.New("cannot connect to node: " + i.NodeName)
 	}
 	state, _, err := conn.GetInstanceState(i.Name)
 	return state, err
@@ -189,7 +190,7 @@ func (i *Instance) IPs() string {
 func (i *Instance) SetState(state string, timeout int, force bool) error {
 	conn := nodes[i.NodeName]
 	if conn == nil {
-		return errors.New("must specify correct node name or node cannot visit now")
+		return errors.New("cannot connect to node: " + i.NodeName)
 	}
 	op, err := conn.UpdateInstanceState(i.Name, api.InstanceStatePut{
 		Action:   state,

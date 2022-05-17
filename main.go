@@ -32,21 +32,24 @@ func main() {
 	bot.cfg = readConfig(*cfgPath)
 
 	//构建代理连接
-	switch strings.Split(bot.cfg.Proxy, ":")[0] {
-	case "socks5":
-		proxyDialer, err := proxy.SOCKS5("tcp", strings.TrimPrefix(bot.cfg.Proxy, "socks5://"), nil, proxy.Direct)
-		if err != nil {
-			log.Fatalf("[proxy]cannot parse proxy with error: %s\n", err)
+	if bot.cfg.Proxy == "none" {
+		proxyClient = http.DefaultClient
+	} else {
+		switch strings.Split(bot.cfg.Proxy, ":")[0] {
+		case "socks5":
+			proxyDialer, err := proxy.SOCKS5("tcp", strings.TrimPrefix(bot.cfg.Proxy, "socks5://"), nil, proxy.Direct)
+			if err != nil {
+				log.Fatalf("[proxy]cannot parse proxy with error: %s\n", err)
+			}
+			proxyClient = &http.Client{Transport: &http.Transport{Dial: proxyDialer.Dial}}
+		case "http", "https":
+			proxyUrl, err := url.Parse(bot.cfg.Proxy)
+			if err != nil {
+				log.Fatalf("[proxy]cannot parse proxy with error: %s\n", err)
+			}
+			proxyClient = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyUrl)}}
 		}
-		proxyClient = &http.Client{Transport: &http.Transport{Dial: proxyDialer.Dial}}
-	case "http", "https":
-		proxyUrl, err := url.Parse(bot.cfg.Proxy)
-		if err != nil {
-			log.Fatalf("[proxy]cannot parse proxy with error: %s\n", err)
-		}
-		proxyClient = &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyUrl)}}
 	}
-
 	var err error
 
 	defer func() {
@@ -89,11 +92,11 @@ func main() {
 
 	bot.Handle("/start", handleStart, IsPrivateMessage)
 	bot.Handle("/create", handleCreate, IsPrivateMessage, GetUserInfo)
-	bot.Handle("/checkin", handleCheckin, GetUserInfo)
+	// bot.Handle("/checkin", handleCheckin, GetUserInfo)
 	bot.Handle("/list", handleListInstance, IsPrivateMessage, GetUserInfo)
-	bot.Handle("/control", handleInstanceControl, GetUserInfo, IsPrivateMessage)
+	// bot.Handle("/control", handleInstanceControl, GetUserInfo, IsPrivateMessage)
 	bot.Handle("/ping", handlePing)
-	bot.Handle(telebot.OnCallback, handleCallback)
+	// bot.Handle(telebot.OnCallback, handleCallback)
 
 	manager := bot.Group()
 	manager.Use(GetUserInfo, func(next telebot.HandlerFunc) telebot.HandlerFunc {
@@ -110,8 +113,8 @@ func main() {
 		}
 	})
 	manager.Handle("/getuserlist", handleGetUserList, IsPrivateMessage)
-	manager.Handle("/banuser", handleBanUser)
-	manager.Handle("/getuserinfo", handleGetUserInfo)
+	// manager.Handle("/banuser", handleBanUser)
+	// manager.Handle("/getuserinfo", handleGetUserInfo)
 	manager.Handle("/delinstance", handleDeleteInstance, IsPrivateMessage)
 
 	administrator := bot.Group()

@@ -1,15 +1,8 @@
 {
-      "bot_token":"5351151084:AAGsbmpUnkM1OQCeTGPk7XJgR_7J4PVdcPE",
-      "proxy":"socks5://127.0.0.1:10808",
+      "bot_token":"",
+      "proxy":"socks5, http, none",
       "db_path":"database.db",
-      "cert_file":"lxd.v2up.eu.org.cert.pem",
-      "key_file":"lxd.v2up.eu.org.key.pem",
-      "nodes":[
-            {
-                  "name":"hk1",
-                  "address":"https://hk-az.v2up.tk",
-                  "port":"8443"
-            }
-      ],
-      "admin_id":2027538584
+      "cert_file":"path to cert file",
+      "key_file":"path to key file",
+      "admin_id":0
 }

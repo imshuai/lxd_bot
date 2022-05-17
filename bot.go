@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
-	"github.com/imshuai/sysutils"
 	"gopkg.in/telebot.v3"
 )
 
@@ -20,7 +19,7 @@ type tBot struct {
 var bot *tBot = &tBot{}
 
 const (
-	isDebug = true
+	isDebug = false
 )
 
 func handleStart(c telebot.Context) error {
@@ -50,7 +49,7 @@ func handleCreate(c telebot.Context) error {
 			nodelist = nodelist + fmt.Sprintf("%-5s: %3d\n", node.Name, node.LeftQuota)
 		}
 		usage := "需要指定要创建实例的节点名称，例如 /create hk1\n当前所有节点剩余配额如下: \n" + HR + "\n"
-		c.Reply(usage + nodelist)
+		return c.Reply(usage + nodelist)
 	}
 	nodeName := c.Args()[0]
 	if nodes[nodeName] == nil {
@@ -65,98 +64,13 @@ func handleCreate(c telebot.Context) error {
 	return c.Send(fmt.Sprintf("创建成功!\n%s\n"+TplInstanceInformation+"\n公网地址: %s\n%s", HR, instance.Name, instance.NodeName, instance.SSHPort, instance.NatPorts, instance.IPs(), node.Address, HR))
 }
 
-func handleCheckin(c telebot.Context) error {
-	var msg string
-	u := c.Get("user").(*User)
-	if len(u.Instances) <= 0 {
-		msg = "你现在还没有可以续期的实例，无需签到"
-	} else {
-		err := u.Checkin()
-		if err != nil {
-			msg = "签到失败，发生错误\n" + HR + "\n" + err.Error() + "\n" + HR
-		} else {
-			msg = "签到成功\n" + HR + "\n" + u.FormatInfo() + "\n" + HR
-		}
-	}
-	return c.Send(msg)
-}
-
 func handlePing(c telebot.Context) error {
-	msgTime := sysutils.Time{c.Message().Time().In(sysutils.SHANGHAI)}
-	now := sysutils.Now()
+	msgTime := Time{c.Message().Time().In(SHANGHAI)}
+	now := Now()
 	if msgTime.Add(time.Minute * 5).After(now.Time) {
 		return c.Reply("我还活着! \n" + HR + "\n" + "消息时间: " + msgTime.String() + "\n响应时间: " + now.String() + "\n响应延迟: " + now.Sub(msgTime.Time).String())
 	}
 	return c.Reply("我活过来了！ \n" + HR + "\n" + "消息时间: " + msgTime.String() + "\n响应时间: " + now.String() + "\n响应延迟: " + now.Sub(msgTime.Time).String())
-}
-
-func handleInstanceControl(c telebot.Context) error {
-	// TODO instance control
-	var instanceName string
-	if i := c.Get("instanceName"); i == nil {
-		instanceName = strings.Split(c.Args()[1], "@")[0]
-		if instanceName == "" {
-			return c.Send("must specify an instance name")
-		}
-	} else {
-		instanceName = i.(string)
-	}
-	u := c.Get("user").(*User)
-	err := u.Query()
-	if err != nil {
-		return c.Reply(err.Error())
-	}
-
-	if !u.HasInstance(instanceName) {
-		return c.Send("This instance is not belong to you")
-	}
-
-	i := &Instance{Name: instanceName}
-
-	err = i.Query()
-	if err != nil {
-		return c.Send("Query instance failed with error: " + err.Error() + "\nTry again later!")
-	}
-	msg := u.FormatInfo() + "\n" + HR
-
-	instance, err := QueryInstance(i.NodeName, i.Name)
-	if err != nil {
-		return c.Reply("query instance failed with error: " + err.Error())
-	}
-	state, err := instance.State()
-	if err != nil {
-		return c.Send("Get instance state failed with error: " + err.Error() + "\nTry again later!")
-	}
-	msg = msg + "\n" + fmt.Sprintf("CPU: \n内存: %-5s\n磁盘: %-5s\n网络: 下行%-7s\t上行%-7s",
-		sysutils.FormatSize(state.Memory.Usage),
-		sysutils.FormatSize(state.Disk["root"].Usage),
-		sysutils.FormatSize(state.Network["eth0"].Counters.BytesReceived),
-		sysutils.FormatSize(state.Network["eth0"].Counters.BytesSent))
-	markup := bot.NewMarkup()
-	markup.Inline([]telebot.Row{
-		{
-			telebot.Btn{
-				Text: "开机",
-				Data: "!!control start " + string(i.Key()),
-			},
-			telebot.Btn{
-				Text: "关机",
-				Data: "!!control stop " + string(i.Key()),
-			},
-		},
-		{
-			telebot.Btn{
-				Text: "重启",
-				Data: "!!control restart " + string(i.Key()),
-			},
-			telebot.Btn{
-				Text: "删机",
-				Data: "!!control delete " + string(i.Key()),
-			},
-		},
-	}...)
-	return c.Send(msg, markup)
-
 }
 
 func handleListInstance(c telebot.Context) error {
@@ -175,14 +89,9 @@ func handleListInstance(c telebot.Context) error {
 		if err != nil {
 			return c.Reply(err.Error())
 		}
-		msg = msg + fmt.Sprintf("%12s: %6s\n", instanceName, state.Status)
+		msg = msg + fmt.Sprintf("%-12s: %6s\n", instanceName, state.Status)
 	}
-	return c.Reply(fmt.Sprintf("%20s\n下面是你的实例列表：\n%s", c.Sender().FirstName, msg))
-}
-
-func handleCallback(c telebot.Context) error {
-	// TODO inline keyboard callback
-	return c.Edit(c.Callback().Data)
+	return c.Reply(fmt.Sprintf("%-20s\n下面是你的实例列表：\n%s", c.Sender().FirstName, msg))
 }
 
 func handleAddManager(c telebot.Context) error {
@@ -213,17 +122,38 @@ func handleDeleteManager(c telebot.Context) error {
 	return c.Send(fmt.Sprintf("删除%s管理员权限成功！", c.Sender().Username))
 }
 func handleGetUserList(c telebot.Context) error {
+	users, err := QueryUsers()
+	if err != nil {
+		return c.Reply("query user failed with error: " + err.Error())
+	}
+	userlist := ""
+	for _, user := range users {
+		instances := ""
+		for instanceName := range user.Instances {
+			instances += instanceName + ", "
+		}
+		instances = strings.TrimRight(instances, ", ")
+		userlist += fmt.Sprintf("@%-15s: %s\n", user.Name, instances)
+	}
+	userlist = strings.TrimRight(userlist, "\n")
+	return c.Reply(fmt.Sprintf("所有用户及其实例如下：\n%s", userlist))
+}
 
-	return nil
-}
-func handleBanUser(c telebot.Context) error {
-	return nil
-}
-func handleGetUserInfo(c telebot.Context) error {
-	return nil
-}
 func handleDeleteInstance(c telebot.Context) error {
-	return nil
+	if len(c.Args()) < 1 {
+		return c.Reply("需要指定要删除实例的名称，例如 /delinstance hk1-88888")
+	}
+	instanceName := c.Args()[0]
+	nodeName := strings.Split(instanceName, "-")[0]
+	instance, err := QueryInstance(nodeName, instanceName)
+	if err != nil {
+		return c.Reply("query instance failed with error: " + err.Error())
+	}
+	err = instance.Delete(false)
+	if err != nil {
+		return c.Reply("delete instance failed with error: " + err.Error())
+	}
+	return c.Reply("delete instance success")
 }
 
 func handleAddNode(c telebot.Context) error {
