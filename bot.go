@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -41,16 +40,29 @@ func handleStart(c telebot.Context) error {
 }
 
 func handleCreate(c telebot.Context) error {
-	node := c.Args()[0]
-	if nodes[node] == nil {
+	if len(c.Args()) < 1 {
+		nodelist := ""
+		for k := range nodes {
+			node, err := QueryNode(k)
+			if err != nil {
+				c.Reply(err.Error())
+			}
+			nodelist = nodelist + fmt.Sprintf("%-5s: %3d\n", node.Name, node.LeftQuota)
+		}
+		usage := "需要指定要创建实例的节点名称，例如 /create hk1\n当前所有节点剩余配额如下: \n" + HR + "\n"
+		c.Reply(usage + nodelist)
+	}
+	nodeName := c.Args()[0]
+	if nodes[nodeName] == nil {
 		return c.Reply("must specify correct node name")
 	}
 	u := c.Get("user").(*User)
-	instance, err := u.CreateInstance(node, DefaultProfiles)
+	instance, err := u.CreateInstance(nodeName, DefaultProfiles)
 	if err != nil {
-		return c.Reply(err.Error())
+		return c.Send(err.Error())
 	}
-	return c.Reply(fmt.Sprintf("创建成功!\n%s\n"+TplInstanceInformation+"\n%s", HR, instance.Name, instance.NodeName, instance.SSHPort, instance.NatPorts, instance.IPs(), HR))
+	node, _ := QueryNode(instance.NodeName)
+	return c.Send(fmt.Sprintf("创建成功!\n%s\n"+TplInstanceInformation+"\n公网地址: %s\n%s", HR, instance.Name, instance.NodeName, instance.SSHPort, instance.NatPorts, instance.IPs(), node.Address, HR))
 }
 
 func handleCheckin(c telebot.Context) error {
@@ -66,7 +78,7 @@ func handleCheckin(c telebot.Context) error {
 			msg = "签到成功\n" + HR + "\n" + u.FormatInfo() + "\n" + HR
 		}
 	}
-	return c.Reply(msg)
+	return c.Send(msg)
 }
 
 func handlePing(c telebot.Context) error {
@@ -196,19 +208,13 @@ func handleDeleteInstance(c telebot.Context) error {
 func handleAddNode(c telebot.Context) error {
 	name := c.Args()[0]
 	address := c.Args()[1]
+	if strings.HasPrefix(address, "http") {
+		address = strings.TrimPrefix(address, "http://")
+		address = strings.TrimPrefix(address, "https://")
+	}
 	port := c.Args()[2]
 	quota, _ := strconv.Atoi(c.Args()[3])
-	node := &Node{
-		Name:      name,
-		Address:   address,
-		Port:      port,
-		LeftQuota: quota,
-		MaxQuota:  quota,
-		Instances: map[string]int64{},
-		Users:     map[int64]string{},
-		locker:    &sync.RWMutex{},
-	}
-	err := node.Save()
+	node, err := NewNode(name, address, port, quota)
 	if err != nil {
 		return c.Send("Add node failed with error: " + err.Error())
 	}

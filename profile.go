@@ -12,5 +12,5 @@ type Profile struct {
 
 var (
 	BckProfiles     = []byte("profiles")
-	DefaultProfiles = []string{"32mb"}
+	DefaultProfiles = []string{"32MB"}
 )

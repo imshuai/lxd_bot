@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"sync"
 
 	"github.com/boltdb/bolt"
 	lxd "github.com/lxc/lxd/client"
@@ -20,7 +19,6 @@ type Node struct {
 	LeftQuota int              `json:"left_quota"`
 	Instances map[string]int64 `json:"instances"`
 	Users     map[int64]string `json:"users"`
-	locker    *sync.RWMutex
 }
 
 var (
@@ -54,23 +52,16 @@ func (n *Node) Key() []byte {
 }
 
 func (n *Node) Query() error {
-	n.locker.Lock()
-	defer n.locker.Unlock()
 	return bot.db.View(func(tx *bolt.Tx) error {
-		bck, err := tx.CreateBucketIfNotExists(BckInstances)
-		if err != nil {
-			return err
-		}
+		bck := tx.Bucket(BckNodes)
 		byts := bck.Get([]byte(n.Key()))
 		return json.Unmarshal(byts, n)
 	})
 }
 
 func (n *Node) Save() error {
-	n.locker.Lock()
-	defer n.locker.Unlock()
 	return bot.db.Update(func(tx *bolt.Tx) error {
-		bck, err := tx.CreateBucketIfNotExists(BckInstances)
+		bck, err := tx.CreateBucketIfNotExists(BckNodes)
 		if err != nil {
 			return err
 		}
@@ -105,7 +96,7 @@ func (n *Node) Delete() error {
 }
 
 func (n *Node) Connect(client *http.Client) (lxd.InstanceServer, error) {
-	return lxd.ConnectLXD(n.Address+":"+n.Port, &lxd.ConnectionArgs{
+	return lxd.ConnectLXD("https://"+n.Address+":"+n.Port, &lxd.ConnectionArgs{
 		TLSClientCert: func() string {
 			byts, err := ioutil.ReadFile(bot.cfg.CertFile)
 			if err != nil {
@@ -127,7 +118,7 @@ func (n *Node) Connect(client *http.Client) (lxd.InstanceServer, error) {
 
 func (n *Node) IsExist() bool {
 	err := bot.db.View(func(tx *bolt.Tx) error {
-		bck := tx.Bucket(BckInstances)
+		bck := tx.Bucket(BckNodes)
 		byts := bck.Get(n.Key())
 		if byts == nil {
 			return ErrorKeyNotFound
@@ -138,7 +129,15 @@ func (n *Node) IsExist() bool {
 }
 
 func QueryNode(name string) (*Node, error) {
-	node := &Node{Name: name}
+	node := &Node{
+		Name:      name,
+		Address:   "",
+		Port:      "",
+		MaxQuota:  0,
+		LeftQuota: 0,
+		Instances: map[string]int64{},
+		Users:     map[int64]string{},
+	}
 	err := node.Query()
 	if err != nil {
 		return nil, err
@@ -155,7 +154,6 @@ func NewNode(name, address, port string, quota int) (*Node, error) {
 		LeftQuota: quota,
 		Instances: map[string]int64{},
 		Users:     map[int64]string{},
-		locker:    &sync.RWMutex{},
 	}
 	if node.IsExist() {
 		return nil, errors.New("node name already exist")

@@ -25,6 +25,7 @@ var (
 )
 
 func main() {
+
 	//读取配置文件
 	cfgPath := flag.String("config", "config.json", "config file path")
 	flag.Parse()

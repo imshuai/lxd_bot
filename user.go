@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/boltdb/bolt"
@@ -27,7 +26,6 @@ type User struct {
 	Instances   map[string]string `json:"instances"`
 	IsManager   bool              `json:"is_manager"`
 	IsBlocked   bool              `json:"is_blocked"`
-	locker      *sync.RWMutex
 }
 
 func InitUser() error {
@@ -60,7 +58,6 @@ func ParseUser(str string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	u.locker = &sync.RWMutex{}
 	return u, nil
 }
 
@@ -75,7 +72,6 @@ func NewUser(name string, uid int64) (*User, error) {
 		LeftQuota:   1,
 		Instances:   make(map[string]string),
 		IsManager:   false,
-		locker:      &sync.RWMutex{},
 	}
 
 	if err := u.Save(); err != nil {
@@ -107,8 +103,6 @@ func (u *User) Query() error {
 }
 
 func (u *User) Save() error {
-	u.locker.Lock()
-	defer u.locker.Unlock()
 	return bot.db.Update(func(tx *bolt.Tx) error {
 		bck, err := tx.CreateBucketIfNotExists([]byte(BckUsers))
 		if err != nil {
@@ -119,15 +113,17 @@ func (u *User) Save() error {
 }
 
 func (u *User) CreateInstance(node string, profiles []string) (*Instance, error) {
-	u.locker.Lock()
-	defer u.locker.Unlock()
 	if u.LeftQuota >= 1 {
 		//TODO: 允许用户创建实例
-		name := RandString(5, RandStringTypeNumbers)
+		name := node + "-" + RandString(5, RandStringTypeNumbers)
 		instance := &Instance{
 			Name:     name,
-			NodeName: node,
+			SSHPort:  "",
+			NatPorts: "",
+			IPv4:     "",
+			IPv6:     "",
 			Profiles: profiles,
+			NodeName: node,
 			UserID:   u.UID,
 		}
 		err := instance.Create()
@@ -152,8 +148,6 @@ func (u *User) DeleteInstance(name string, ignoreLXDError bool) error {
 }
 
 func (u *User) Checkin() error {
-	u.locker.Lock()
-	defer u.locker.Unlock()
 	u.LastCheckin = sysutils.Now()
 	u.Expiration = tExpiration(u.LastCheckin)
 	err := bot.db.Update(func(tx *bolt.Tx) error {

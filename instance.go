@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/boltdb/bolt"
 	"github.com/lxc/lxd/shared/api"
@@ -24,7 +23,6 @@ type Instance struct {
 	Profiles []string `json:"profiles"`
 	NodeName string   `josn:"node_name"`
 	UserID   int64    `json:"user_id"`
-	locker   *sync.RWMutex
 }
 
 func InitInstance() error {
@@ -36,15 +34,11 @@ func InitInstance() error {
 
 //Key generate this instance's key
 func (i *Instance) Key() []byte {
-	i.locker.RLock()
-	defer i.locker.RUnlock()
 	return []byte(i.NodeName + ":" + i.Name)
 }
 
 //Save store this instance to the database
 func (i *Instance) Save() error {
-	i.locker.Lock()
-	defer i.locker.Unlock()
 	return bot.db.Update(func(tx *bolt.Tx) error {
 		bck, err := tx.CreateBucketIfNotExists(BckInstances)
 		if err != nil {
@@ -60,8 +54,6 @@ func (i *Instance) Save() error {
 
 //Query get this instance's information from database
 func (i *Instance) Query() error {
-	i.locker.Lock()
-	defer i.locker.Unlock()
 	return bot.db.View(func(tx *bolt.Tx) error {
 		bck, err := tx.CreateBucketIfNotExists(BckInstances)
 		if err != nil {
@@ -99,8 +91,6 @@ func (i *Instance) Delete(ignoreLXDError bool) error {
 }
 
 func (i *Instance) Create() error {
-	i.locker.Lock()
-	defer i.locker.Unlock()
 	conn := nodes[i.NodeName]
 	if conn == nil {
 		return errors.New("cannot connect to node: " + i.NodeName)
@@ -109,9 +99,7 @@ func (i *Instance) Create() error {
 	if err != nil {
 		return err
 	}
-	node.locker.Lock()
-	defer node.locker.Unlock()
-	i.IPv4 = fmt.Sprintf("10.10.11.1%0d", node.MaxQuota-node.LeftQuota+1)
+	i.IPv4 = fmt.Sprintf("10.10.11.1%02d", node.MaxQuota-node.LeftQuota+1)
 	i.SSHPort = strings.Split(i.IPv4, ".")[3] + "00"
 	i.NatPorts = strings.Split(i.IPv4, ".")[3] + "01-" + strings.Split(i.IPv4, ".")[3] + "20"
 	op, err := conn.CreateInstance(api.InstancesPost{
@@ -139,8 +127,8 @@ func (i *Instance) Create() error {
 				},
 				"nat-udp-ports": {
 					"bind":    "host",
-					"connect": "tcp:127.0.0.1:" + i.NatPorts,
-					"listen":  "tcp:0.0.0.0:" + i.NatPorts,
+					"connect": "udp:127.0.0.1:" + i.NatPorts,
+					"listen":  "udp:0.0.0.0:" + i.NatPorts,
 					"type":    "proxy",
 				},
 			},
@@ -162,6 +150,11 @@ func (i *Instance) Create() error {
 	if err != nil {
 		return err
 	}
+	err = i.Boot()
+	if err != nil {
+		i.Delete(true)
+		return err
+	}
 	node.LeftQuota -= 1
 	node.Instances[i.Name] = i.UserID
 	node.Users[i.UserID] = i.Name
@@ -178,16 +171,48 @@ func (i *Instance) Create() error {
 }
 
 func (i *Instance) State() (*api.InstanceState, error) {
-	node := nodes[i.NodeName]
-	if node == nil {
+	conn := nodes[i.NodeName]
+	if conn == nil {
 		return nil, errors.New("must specify correct node name or node cannot visit now")
 	}
-	state, _, err := node.GetInstanceState(i.Name)
+	state, _, err := conn.GetInstanceState(i.Name)
 	return state, err
 }
 
 func (i *Instance) IPs() string {
-	return i.IPv4 + "\n" + i.IPv6
+	if i.IPv6 == "" {
+		return i.IPv4
+	}
+	return i.IPv4 + "\n\t" + i.IPv6
+}
+
+func (i *Instance) SetState(state string, timeout int, force bool) error {
+	conn := nodes[i.NodeName]
+	if conn == nil {
+		return errors.New("must specify correct node name or node cannot visit now")
+	}
+	op, err := conn.UpdateInstanceState(i.Name, api.InstanceStatePut{
+		Action:   state,
+		Timeout:  timeout,
+		Force:    force,
+		Stateful: false,
+	}, "")
+	if err != nil {
+		return err
+	}
+	return op.Wait()
+}
+
+func (i *Instance) Boot() error {
+	return i.SetState("start", -1, false)
+}
+
+func (i *Instance) Reboot() error {
+	return i.SetState("restart", -1, true)
+}
+
+func (i *Instance) Shutdown() error {
+	return i.SetState("stop", -1, true)
 }
 
 func QueryInstance(node, name string) (*Instance, error) {
